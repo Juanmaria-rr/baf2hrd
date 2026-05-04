@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Data and outputs (large files, run-specific — live in tso_samples/ outside this repo)
+*.csv
+*.tsv
+*.txt
+!autoresearch/calibration_samples.txt
+!autoresearch/validation_samples.txt
+*.jsonl
+*.png
+*.pdf
+*.pptx
+
+# SLURM logs and job outputs
+logs/
+*.log
+*.err
+*.out
+
+# Jupyter notebooks (exploratory — not part of production pipeline)
+*.ipynb
+
+# Conda / virtualenv
+.env
+.venv/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store

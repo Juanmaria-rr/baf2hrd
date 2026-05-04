@@ -1,0 +1,29 @@
+# BAF-to-HRD Pipeline — Run 20260406 (ASCAT-downsampled validation set)
+
+run:
+  date: "20260406"
+  base_dir: null
+  stages: null
+
+input:
+  folder_paths:
+    - "/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/20260225_GoldStandard_mpileup_stats_q30/results"
+  raw_segments_dir: "/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/20260416"
+  thresholds_file: "/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/20260406/thresholds_analysis/thresholds_lookup.json"
+  purity_file: null
+  ascat_segments_dir: null
+  baf_suffixes:
+    - "_qc.tsv"
+    - ".tumour.tso500_sparse_downsample_corrected.txt.gz"
+    - ".tumour.tso500_sparse_downsample.txt"
+  types_of_files:
+    - "_qc.tsv"
+
+processing:
+  dp_values: [0, 2, 4, 8]
+  n_bins: 20
+  max_gap_bp_for_merge: 1
+
+paths:
+  tso_samples_root: "/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples"
+  operations_dir: "/storage/scratch01/groups/co/cn_extra/alleleSpecific/operations"

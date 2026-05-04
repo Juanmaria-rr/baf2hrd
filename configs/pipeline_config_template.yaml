@@ -1,0 +1,72 @@
+# BAF-to-HRD Pipeline — Configuration Template
+#
+# Copy this file and fill in the values for your run:
+#   cp pipeline_config_template.yaml pipeline_config_YYYYMMDD.yaml
+#
+# Usage:
+#   python baf_to_hrd_pipeline.py --config configs/pipeline_config_YYYYMMDD.yaml
+#   python baf_to_hrd_pipeline.py --config configs/pipeline_config_YYYYMMDD.yaml --stages 3
+#   python baf_to_hrd_pipeline.py --config configs/pipeline_config_YYYYMMDD.yaml SAMPLE LONGNAME /path
+
+run:
+  # Date tag for this run — used to name the output base directory.
+  date: "YYYYMMDD"
+
+  # Output base directory. Leave null to auto-derive as <tso_samples_root>/<date>.
+  base_dir: null
+
+  # Stages to run: "1", "2", "3", or comma-separated e.g. "2,3".
+  # Leave null to run all three stages.
+  stages: null
+
+input:
+  # Folders containing per-sample BAF files (_qc.tsv or ASCAT .txt.gz).
+  # The pipeline searches each folder for samples matching BAF_SUFFIXES (below).
+  folder_paths:
+    - "/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/RESULTS_DIR"
+
+  # Directory containing per-sample CN segment CSV files (from TSO500 caller).
+  raw_segments_dir: "/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/SEGMENTS_DATE"
+
+  # JSON file with calibrated outer_mass thresholds (from calibrate_thresholds.py).
+  # Supports both flat {cn: {key: threshold}} and nested {dp: {cn: {key: threshold}}} formats.
+  thresholds_file: "/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/THRESHOLDS_DATE/thresholds_analysis/thresholds_lookup.json"
+
+  # Purity/ploidy TSV file (tab-separated, columns: sample, purity, ploidy).
+  # Set to null if not available — pipeline runs without purity correction.
+  purity_file: null
+
+  # Directory containing ASCAT segment CSVs with nMajor/nMinor columns.
+  # Set to null to search only raw_segments_dir.
+  ascat_segments_dir: null
+
+  # BAF file suffixes — order determines priority when multiple formats coexist.
+  baf_suffixes:
+    - "_qc.tsv"
+    - ".tumour.tso500_sparse_downsample_corrected.txt.gz"
+    - ".tumour.tso500_sparse_downsample.txt"
+
+  # Label used to tag each processing pass in output files.
+  types_of_files:
+    - "_qc.tsv"
+
+processing:
+  # Depth-of-coverage filter values to apply (0 = no filter).
+  dp_values: [0, 2, 4, 8]
+
+  # Number of BAF histogram bins (must match the bins in the segment files).
+  n_bins: 20
+
+  # Maximum gap (bp) between adjacent segments to merge when allelic state matches.
+  max_gap_bp_for_merge: 1
+
+paths:
+  # Root directory containing all tso_samples run subdirectories.
+  # Used to auto-derive base_dir when run.base_dir is null.
+  tso_samples_root: "/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples"
+
+  # Directory containing operations/functions.py.
+  # NOTE: this path is resolved at module import time and cannot be changed
+  # at runtime — set it here for documentation, but the default in the script
+  # is authoritative unless you edit the OPERATIONS_DIR default in the script.
+  operations_dir: "/storage/scratch01/groups/co/cn_extra/alleleSpecific/operations"

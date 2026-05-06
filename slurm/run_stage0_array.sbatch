@@ -58,7 +58,7 @@ export PATH="/home/jmroldan/miniconda3/envs/shapeit4/bin:$PATH"
 BAM_LIST="${1:?Usage: sbatch --array=0-N%BATCH run_stage0_array.sbatch BAM_LIST OUTDIR}"
 OUTDIR="${2:?Usage: sbatch --array=0-N%BATCH run_stage0_array.sbatch BAM_LIST OUTDIR}"
 
-SCRIPT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # ============================================================

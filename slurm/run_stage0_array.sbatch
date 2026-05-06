@@ -38,6 +38,10 @@
 #     | grep '\.bam$' | awk '{print $4}' > bam_list.txt
 #
 #   # Submit (20 concurrent tasks = ~140 GB peak for S3 source)
+#   # NOTE: logs/ must exist before submitting — SLURM opens the output
+#   #       files before the job script runs, so mkdir inside the script
+#   #       is too late.
+#   mkdir -p logs
 #   N=$(wc -l < bam_list.txt)
 #   sbatch --array=0-$(( N - 1 ))%20 \
 #     run_stage0_array.sbatch bam_list.txt /path/to/tsv_outdir

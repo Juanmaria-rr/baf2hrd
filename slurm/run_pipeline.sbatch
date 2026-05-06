@@ -31,7 +31,10 @@ echo "DATE:    $(date)"
 echo "JOB ID:  ${SLURM_JOB_ID:-NA}"
 echo "============================================================"
 
-CONFIG="${REPO_DIR}/configs/pipeline_config_20260421.yaml"
+# PIPELINE_CONFIG can be injected by orchestrate_pipeline.sh via --export.
+# Falls back to the last manual config for standalone runs.
+CONFIG="${PIPELINE_CONFIG:-${REPO_DIR}/configs/pipeline_config_20260421.yaml}"
+echo "CONFIG:  ${CONFIG}"
 
 conda run -n shapeit4 python "${REPO_DIR}/pipeline/baf_to_hrd_pipeline.py" \
     --config "${CONFIG}"

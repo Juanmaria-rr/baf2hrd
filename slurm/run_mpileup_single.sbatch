@@ -37,7 +37,9 @@ OUTDIR="${2:?Usage: sbatch run_mpileup_single.sbatch SAMPLE OUTDIR}"
 # ============================================================
 # Fixed paths — edit to match your cluster layout
 # ============================================================
-BAM_DIR="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/rg_bam"
+# BAM_DIR can be overridden at submission time via --export=BAM_DIR=...
+# (orchestrate_pipeline.sh does this automatically for batch runs)
+BAM_DIR="${BAM_DIR:-/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/rg_bam}"
 FASTA="/home/_groups/co/reference/hg19/hg19.fa"
 BED="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/snp6_nochrM_fixed.bed"
 MIN_BQ=30

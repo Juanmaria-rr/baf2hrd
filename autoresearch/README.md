@@ -88,20 +88,20 @@ No action needed unless you re-run Stage 1/2.
 ### 2. Build the validation set (once)
 
 ```bash
-sbatch autoresearch_baf_hrd/run_prepare.sbatch
+sbatch autoresearch/run_prepare.sbatch
 ```
 
-This creates `autoresearch_baf_hrd/val_data.csv` with segments from ASCAT-profiled
+This creates `autoresearch/val_data.csv` with segments from ASCAT-profiled
 samples (nMajor/nMinor present) at DP=8, including 20 corrected + 20 raw BAF bin
 columns and ground-truth class labels.
 
 ### 3. Run the baseline experiment
 
 ```bash
-sbatch autoresearch_baf_hrd/run_experiment.sbatch
+sbatch autoresearch/run_experiment.sbatch
 ```
 
-Check the log: `autoresearch_baf_hrd/logs/experiment_<jobid>.log`
+Check the log: `autoresearch/logs/experiment_<jobid>.log`
 ```
 val_allelic_acc : 0.XXXX  (N / M segments)
 val_class_acc   : 0.XXXX
@@ -111,17 +111,17 @@ val_class_acc   : 0.XXXX
 ### 4. Inspect results
 
 ```bash
-conda run -n shapeit4 python autoresearch_baf_hrd/evaluate.py            # full leaderboard
-conda run -n shapeit4 python autoresearch_baf_hrd/evaluate.py --best     # best run details
-conda run -n shapeit4 python autoresearch_baf_hrd/evaluate.py --last 5   # last 5 runs
-conda run -n shapeit4 python autoresearch_baf_hrd/evaluate.py --plot     # save results/progress.png
+conda run -n shapeit4 python autoresearch/evaluate.py            # full leaderboard
+conda run -n shapeit4 python autoresearch/evaluate.py --best     # best run details
+conda run -n shapeit4 python autoresearch/evaluate.py --last 5   # last 5 runs
+conda run -n shapeit4 python autoresearch/evaluate.py --plot     # save results/progress.png
 ```
 
 ### 5. Iterate
 
 ```
 1. Edit experiment.py  (THRESHOLDS, classify_segment, OUTER_LOWER/UPPER, etc.)
-2. sbatch autoresearch_baf_hrd/run_experiment.sbatch
+2. sbatch autoresearch/run_experiment.sbatch
 3. Check logs/ and results/log.jsonl
 4. Repeat
 ```

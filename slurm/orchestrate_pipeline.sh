@@ -15,7 +15,22 @@
 # Stage 0 is skipped for that sample.
 #
 # Usage:
+#   bash orchestrate_pipeline.sh [OPTIONS]
+#
+# Options:
+#   --bam-dir DIR    Directory with *.mdup.rg.bam files
+#                    (default: tso_samples/rg_bam)
+#   --tsv-dir DIR    Directory where _qc.tsv files are/will be written
+#                    (default: 20260225_GoldStandard_mpileup_stats_q30/results)
+#
+# Examples:
+#   # Default (existing samples)
 #   bash orchestrate_pipeline.sh
+#
+#   # New batch
+#   bash orchestrate_pipeline.sh \
+#     --bam-dir /storage/.../tso_samples/rg_bam_20260505_batch01 \
+#     --tsv-dir /storage/.../tso_samples/20260505_batch01_mpileup/results
 #
 # Inspect submitted jobs:
 #   squeue -u $USER
@@ -26,7 +41,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ============================================================
-# USER CONFIGURATION — edit these paths before running
+# DEFAULTS — overridable via CLI arguments
 # ============================================================
 
 # Directory that contains *.mdup.rg.bam files
@@ -35,6 +50,31 @@ BAM_DIR="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/rg_bam
 # Directory where _qc.tsv files live (already parsed) or will be written (from BAMs)
 # The pipeline (Stage 1+) reads from this directory.
 TSV_DIR="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/20260225_GoldStandard_mpileup_stats_q30/results"
+
+# ============================================================
+# Parse CLI arguments
+# ============================================================
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --bam-dir) BAM_DIR="$2"; shift 2 ;;
+        --tsv-dir) TSV_DIR="$2"; shift 2 ;;
+        *) echo "[ERROR] Unknown argument: $1"; exit 1 ;;
+    esac
+done
+
+# Combined TSO500 segment file — all samples in one CSV.
+# split_segments.py reads this and writes one CSV per sample to SEGMENTS_DIR.
+COMBINED_SEGMENTS="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/unique_copyright_100kb_abs_segtable_free_purity_filtered_unique.csv"
+
+# Where per-sample segment CSVs will be written (auto-named YYYYMMDD_segments).
+# Leave empty to let split_segments.py choose the date-stamped default.
+SEGMENTS_DIR=""
+
+# Python interpreter with pandas available
+PYTHON="conda run -n shapeit4 python"
+
+# Path to split_segments.py
+SPLIT_SEGMENTS_PY="${SCRIPT_DIR}/../pipeline/split_segments.py"
 
 # BAM filename suffix patterns to try (EXP08A takes priority over EXP08B)
 BAM_SUFFIXES=("-TSO500-EXP08A.mdup.rg.bam" "-TSO500-EXP08B.mdup.rg.bam")
@@ -98,6 +138,36 @@ if [[ ! -f "$PIPELINE_SBATCH" ]]; then
 fi
 
 # ============================================================
+# Pre-processing: split combined segments → per-sample CSVs
+# ============================================================
+echo "============================================================"
+echo "Pre-processing: split_segments"
+echo "============================================================"
+
+if [[ ! -f "$COMBINED_SEGMENTS" ]]; then
+    echo "[ERROR] Combined segments file not found: $COMBINED_SEGMENTS"
+    exit 1
+fi
+
+SPLIT_ARGS=(--all --combined "$COMBINED_SEGMENTS")
+[[ -n "$SEGMENTS_DIR" ]] && SPLIT_ARGS+=(--outdir "$SEGMENTS_DIR")
+
+# Capture the raw_segments_dir printed by split_segments.py
+SPLIT_OUTPUT=$($PYTHON "$SPLIT_SEGMENTS_PY" "${SPLIT_ARGS[@]}" 2>&1)
+echo "$SPLIT_OUTPUT"
+
+# Extract the output directory from the last raw_segments_dir= line
+SEGMENTS_DIR=$(echo "$SPLIT_OUTPUT" | grep "^\\[split_segments\\] raw_segments_dir=" | tail -1 | cut -d= -f2)
+
+if [[ -z "$SEGMENTS_DIR" ]]; then
+    echo "[ERROR] Could not determine SEGMENTS_DIR from split_segments.py output."
+    exit 1
+fi
+
+echo "[INFO] raw_segments_dir resolved to: $SEGMENTS_DIR"
+echo ""
+
+# ============================================================
 # Scan BAM directory
 # ============================================================
 echo "============================================================"
@@ -151,6 +221,7 @@ for sample in $(echo "${!bam_for_sample[@]}" | tr ' ' '\n' | sort); do
     # ── Stage 0a: mpileup ──────────────────────────────────────────────────
     jid_mpileup=$(sbatch \
         --parsable \
+        --export=ALL,BAM_DIR="$BAM_DIR" \
         "${SCRIPT_DIR}/run_mpileup_single.sbatch" \
         "$sample" \
         "$TSV_DIR")
@@ -179,6 +250,25 @@ echo "Samples skipped (TSV)  : $n_skip"
 echo "------------------------------------------------------------"
 
 # ============================================================
+# Generate run config
+# ============================================================
+RUN_DATE="$(date +%Y%m%d)"
+REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+RUN_CONFIG="${REPO_DIR}/configs/pipeline_config_${RUN_DATE}.yaml"
+
+# Only write if it does not already exist (idempotent re-runs same day)
+if [[ ! -f "$RUN_CONFIG" ]]; then
+    TEMPLATE="${REPO_DIR}/configs/pipeline_config_template.yaml"
+    sed \
+        -e "s|date: \"YYYYMMDD\"|date: \"${RUN_DATE}\"|" \
+        -e "s|raw_segments_dir:.*|raw_segments_dir: \"${SEGMENTS_DIR}\"|" \
+        "$TEMPLATE" > "$RUN_CONFIG"
+    echo "[INFO] Generated run config: $RUN_CONFIG"
+else
+    echo "[INFO] Re-using existing run config: $RUN_CONFIG"
+fi
+
+# ============================================================
 # Submit pipeline (Stage 1+)
 # ============================================================
 if [[ -z "$PIPELINE_SBATCH" ]]; then
@@ -191,11 +281,13 @@ if [[ ${#stage0_jids[@]} -gt 0 ]]; then
     dep_str="afterok:$(IFS=':'; echo "${stage0_jids[*]}")"
     echo ""
     echo "Submitting pipeline with dependency: $dep_str"
-    pipeline_jid=$(sbatch --parsable --dependency="$dep_str" "$PIPELINE_SBATCH")
+    pipeline_jid=$(sbatch --parsable --dependency="$dep_str" \
+        --export=ALL,PIPELINE_CONFIG="$RUN_CONFIG" "$PIPELINE_SBATCH")
 else
     echo ""
     echo "All samples already have TSVs — submitting pipeline immediately."
-    pipeline_jid=$(sbatch --parsable "$PIPELINE_SBATCH")
+    pipeline_jid=$(sbatch --parsable \
+        --export=ALL,PIPELINE_CONFIG="$RUN_CONFIG" "$PIPELINE_SBATCH")
 fi
 
 echo "Pipeline job → $pipeline_jid"

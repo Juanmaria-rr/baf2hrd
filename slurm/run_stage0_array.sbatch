@@ -38,13 +38,12 @@
 #     | grep '\.bam$' | awk '{print $4}' > bam_list.txt
 #
 #   # Submit (20 concurrent tasks = ~140 GB peak for S3 source)
-#   # NOTE: logs/ must exist before submitting — SLURM opens the output
-#   #       files before the job script runs, so mkdir inside the script
-#   #       is too late.
+#   # NOTE: run from the repo root; logs/ must exist beforehand.
 #   mkdir -p logs
 #   N=$(wc -l < bam_list.txt)
 #   sbatch --array=0-$(( N - 1 ))%20 \
-#     run_stage0_array.sbatch bam_list.txt /path/to/tsv_outdir
+#     --export=ALL,REPO_DIR="$(pwd)" \
+#     slurm/run_stage0_array.sbatch bam_list.txt /path/to/tsv_outdir
 #
 # Skip logic: if OUTDIR/SAMPLE_qc.tsv already exists the task
 # exits immediately — safe to re-submit after partial failures.
@@ -58,8 +57,10 @@ export PATH="/home/jmroldan/miniconda3/envs/shapeit4/bin:$PATH"
 BAM_LIST="${1:?Usage: sbatch --array=0-N%BATCH run_stage0_array.sbatch BAM_LIST OUTDIR}"
 OUTDIR="${2:?Usage: sbatch --array=0-N%BATCH run_stage0_array.sbatch BAM_LIST OUTDIR}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# REPO_DIR must be injected via --export=ALL,REPO_DIR="$(pwd)" at submission.
+# Neither BASH_SOURCE[0] nor SLURM_SUBMIT_DIR reliably point to the repo:
+# SLURM copies the script to /var/spool/slurmd before execution.
+REPO_DIR="${REPO_DIR:?REPO_DIR not set — submit with: sbatch --export=ALL,REPO_DIR=\"\$(pwd)\" ...}"
 
 # ============================================================
 # Fixed paths

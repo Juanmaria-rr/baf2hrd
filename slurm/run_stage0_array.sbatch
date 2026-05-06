@@ -52,6 +52,9 @@
 
 set -euo pipefail
 
+# bcftools and samtools live in the shapeit4 conda env — add to PATH
+export PATH="/home/jmroldan/miniconda3/envs/shapeit4/bin:$PATH"
+
 BAM_LIST="${1:?Usage: sbatch --array=0-N%BATCH run_stage0_array.sbatch BAM_LIST OUTDIR}"
 OUTDIR="${2:?Usage: sbatch --array=0-N%BATCH run_stage0_array.sbatch BAM_LIST OUTDIR}"
 

@@ -474,21 +474,35 @@ def _find_segment_file(sample_short, search_dirs):
 
     Tries the standard TSO filename pattern first; falls back to a glob for any
     CSV file whose name starts with sample_short in each directory.
+
+    Samples sequenced with the HRD panel carry a '-HRD' suffix in their name
+    but share the same reference segment file as the base sample (e.g.
+    'JBLAB17012-HRD' → segments of 'JBLAB17012'). If no file is found under
+    the full name, the lookup is retried without the '-HRD' suffix.
     """
-    for d in search_dirs:
-        if d is None or not os.path.isdir(d):
-            continue
-        standard = os.path.join(
-            d, f"{sample_short}_100kb_abs_segtable_free_purity_filtered_unique.csv"
-        )
-        if os.path.exists(standard):
-            return standard
-        matches = sorted(glob.glob(os.path.join(d, f"{sample_short}_*.csv")))
-        if len(matches) > 1:
-            print(f"  ⚠️  Multiple segment files matched '{sample_short}*.csv' in {d}; "
-                  f"using first: {os.path.basename(matches[0])}")
-        if matches:
-            return matches[0]
+    lookup_names = [sample_short]
+    if sample_short.endswith("-HRD"):
+        lookup_names.append(sample_short[: -len("-HRD")])
+
+    for name in lookup_names:
+        for d in search_dirs:
+            if d is None or not os.path.isdir(d):
+                continue
+            standard = os.path.join(
+                d, f"{name}_100kb_abs_segtable_free_purity_filtered_unique.csv"
+            )
+            if os.path.exists(standard):
+                if name != sample_short:
+                    print(f"  ℹ️  {sample_short}: segments resolved via base name '{name}'")
+                return standard
+            matches = sorted(glob.glob(os.path.join(d, f"{name}_*.csv")))
+            if len(matches) > 1:
+                print(f"  ⚠️  Multiple segment files matched '{name}*.csv' in {d}; "
+                      f"using first: {os.path.basename(matches[0])}")
+            if matches:
+                if name != sample_short:
+                    print(f"  ℹ️  {sample_short}: segments resolved via base name '{name}'")
+                return matches[0]
     return None
 
 
@@ -2099,13 +2113,18 @@ def run_script3():
 
             all_rows.extend([output_df_premerge, merged_scarhrd_df])
 
+            scarhrd_cols = ["SampleID", "Chromosome", "Start_position",
+                            "End_position", "total_cn", "A_cn", "B_cn", "ploidy"]
+            for df_out, merge_state in [(output_df_premerge, "premerge"),
+                                        (merged_scarhrd_df,  "postmerge")]:
+                fname = f"{sample_id}_dp{dp}_{merge_state}_scarHRD_input.txt"
+                df_out[scarhrd_cols].to_csv(
+                    os.path.join(SCARHRD_THRESHOLDS_DIR, fname),
+                    sep="\t", index=False,
+                )
+
             print(f"✓ {sample_id} DP={dp}: "
                   f"pre={len(output_df_premerge)} segs → post={len(merged_scarhrd_df)} segs")
-
-        if all_rows:
-            combined = pd.concat(all_rows, ignore_index=True)
-            out_file = os.path.join(SCARHRD_THRESHOLDS_DIR, f"{sample_id}_scarHRD_input.txt")
-            combined.to_csv(out_file, sep="\t", index=False)
 
     print(f"\n{'='*70}")
     print("✓ STAGE 3 COMPLETE")

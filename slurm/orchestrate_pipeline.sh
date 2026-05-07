@@ -90,6 +90,9 @@ KNOWN_TSV_SUFFIXES=(
 # Must be a self-contained sbatch that runs baf_to_hrd_pipeline.py.
 PIPELINE_SBATCH="${SCRIPT_DIR}/run_pipeline.sbatch"
 
+# scarHRD sbatch to submit once Stages 1-3 complete.
+SCARHRD_SBATCH="${SCRIPT_DIR}/run_scarHRD.sbatch"
+
 # Maximum simultaneous Stage 0 array tasks (throttles mpileup memory)
 MAX_PARALLEL_MPILEUP=10
 
@@ -254,6 +257,7 @@ echo "------------------------------------------------------------"
 # ============================================================
 RUN_DATE="$(date +%Y%m%d)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+TSO_SAMPLES_ROOT="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples"
 RUN_CONFIG="${REPO_DIR}/configs/pipeline_config_${RUN_DATE}.yaml"
 
 # Only write if it does not already exist (idempotent re-runs same day)
@@ -282,15 +286,27 @@ if [[ ${#stage0_jids[@]} -gt 0 ]]; then
     echo ""
     echo "Submitting pipeline with dependency: $dep_str"
     pipeline_jid=$(sbatch --parsable --dependency="$dep_str" \
-        --export=ALL,PIPELINE_CONFIG="$RUN_CONFIG" "$PIPELINE_SBATCH")
+        --export=ALL,REPO_DIR="$REPO_DIR",PIPELINE_CONFIG="$RUN_CONFIG" "$PIPELINE_SBATCH")
 else
     echo ""
     echo "All samples already have TSVs — submitting pipeline immediately."
     pipeline_jid=$(sbatch --parsable \
-        --export=ALL,PIPELINE_CONFIG="$RUN_CONFIG" "$PIPELINE_SBATCH")
+        --export=ALL,REPO_DIR="$REPO_DIR",PIPELINE_CONFIG="$RUN_CONFIG" "$PIPELINE_SBATCH")
 fi
 
 echo "Pipeline job → $pipeline_jid"
+
+# ============================================================
+# Submit scarHRD (Stage 4) dependent on pipeline completion
+# ============================================================
+BASE_DIR="${TSO_SAMPLES_ROOT}/${RUN_DATE}"
+
+scarhrd_jid=$(sbatch --parsable \
+    --dependency=afterok:"$pipeline_jid" \
+    --export=ALL,REPO_DIR="$REPO_DIR",BASE_DIR="$BASE_DIR" \
+    "$SCARHRD_SBATCH")
+
+echo "scarHRD job → $scarhrd_jid  (dep: $pipeline_jid)"
 echo ""
 echo "Monitor:  squeue -u \$USER"
 echo "Logs:     ${SCRIPT_DIR}/logs/"

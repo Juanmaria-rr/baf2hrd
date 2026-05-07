@@ -316,7 +316,7 @@ def build_output_stem(sample_name, file_type, baf_folder):
     return f"{sample_name}_{file_type}_{baf_folder}"
 
 
-def create_sample_name_dict_custom(folder_path, max_samples=10):
+def create_sample_name_dict_custom(folder_path, max_samples=None):
     """
     Discover BAF files in folder_path for all suffixes in BAF_SUFFIXES.
 
@@ -337,7 +337,7 @@ def create_sample_name_dict_custom(folder_path, max_samples=10):
     processed_long = set()
 
     for file_path in all_files:
-        if len(processed_long) >= max_samples:
+        if max_samples is not None and len(processed_long) >= max_samples:
             break
         filename = os.path.basename(file_path)
         long_name = None
@@ -355,7 +355,7 @@ def create_sample_name_dict_custom(folder_path, max_samples=10):
         sample_dict[short_name] = long_name
         processed_long.add(long_name)
 
-    print(f"Processed {len(sample_dict)} samples (limit: {max_samples})")
+    print(f"Processed {len(sample_dict)} samples")
     return sample_dict
 
 
@@ -483,7 +483,7 @@ def _find_segment_file(sample_short, search_dirs):
         )
         if os.path.exists(standard):
             return standard
-        matches = sorted(glob.glob(os.path.join(d, f"{sample_short}*.csv")))
+        matches = sorted(glob.glob(os.path.join(d, f"{sample_short}_*.csv")))
         if len(matches) > 1:
             print(f"  ⚠️  Multiple segment files matched '{sample_short}*.csv' in {d}; "
                   f"using first: {os.path.basename(matches[0])}")
@@ -1469,7 +1469,7 @@ def run_script1():
             if PARALLEL_MODE:
                 samples_dict = {SAMPLE_ID_FILTER: LONG_NAME_FILTER}
             else:
-                samples_dict = create_sample_name_dict_custom(folder_path, max_samples=10)
+                samples_dict = create_sample_name_dict_custom(folder_path)
 
             segments_master = load_segments_for_samples(samples_dict, RAW_SEGMENTS_DIR)
 

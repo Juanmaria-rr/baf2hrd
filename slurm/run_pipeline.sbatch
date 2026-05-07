@@ -21,9 +21,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
-REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-mkdir -p "${SCRIPT_DIR}/logs"
+REPO_DIR="${REPO_DIR:?REPO_DIR not set — submit with: sbatch --export=ALL,REPO_DIR=\"\$(pwd)\" ...}"
+mkdir -p "${REPO_DIR}/slurm/logs"
 
 echo "============================================================"
 echo "BAF-to-HRD Pipeline — Stages 1–3"

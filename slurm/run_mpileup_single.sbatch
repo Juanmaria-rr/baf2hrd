@@ -55,20 +55,36 @@ OUT_STATS="${OUTDIR}/${SAMPLE}_bam_global_stats_qualityMetrics_q30Pass.txt"
 
 # ============================================================
 # Detect BAM (EXP08A or EXP08B)
+# Handles legacy mdup.rg naming and plain .bam from new transfers.
+# For -HRD samples (e.g. JBLAB17012-HRD) the BAM carries -TSO500-HRD-EXP08*.
 # ============================================================
-BAM_A="${BAM_DIR}/${SAMPLE}-TSO500-EXP08A.mdup.rg.bam"
-BAM_B="${BAM_DIR}/${SAMPLE}-TSO500-EXP08B.mdup.rg.bam"
+BASE_SAMPLE="${SAMPLE%-HRD}"
+if [[ "$SAMPLE" == *-HRD ]]; then
+    INFIX="-TSO500-HRD"
+else
+    INFIX="-TSO500"
+    BASE_SAMPLE="$SAMPLE"
+fi
+
+BAM_A="${BAM_DIR}/${BASE_SAMPLE}${INFIX}-EXP08A.mdup.rg.bam"
+BAM_B="${BAM_DIR}/${BASE_SAMPLE}${INFIX}-EXP08B.mdup.rg.bam"
+BAM_A2="${BAM_DIR}/${BASE_SAMPLE}${INFIX}-EXP08A.bam"
+BAM_B2="${BAM_DIR}/${BASE_SAMPLE}${INFIX}-EXP08B.bam"
 
 if [[ -f "$BAM_A" ]]; then
-  BAM="$BAM_A"
-  EXP_USED="EXP08A"
+  BAM="$BAM_A"; EXP_USED="EXP08A"
 elif [[ -f "$BAM_B" ]]; then
-  BAM="$BAM_B"
-  EXP_USED="EXP08B"
+  BAM="$BAM_B"; EXP_USED="EXP08B"
+elif [[ -f "$BAM_A2" ]]; then
+  BAM="$BAM_A2"; EXP_USED="EXP08A"
+elif [[ -f "$BAM_B2" ]]; then
+  BAM="$BAM_B2"; EXP_USED="EXP08B"
 else
   echo "[ERROR] No BAM found for $SAMPLE"
   echo "  Tried: $BAM_A"
   echo "  Tried: $BAM_B"
+  echo "  Tried: $BAM_A2"
+  echo "  Tried: $BAM_B2"
   exit 1
 fi
 

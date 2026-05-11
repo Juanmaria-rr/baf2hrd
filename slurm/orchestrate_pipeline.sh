@@ -76,8 +76,17 @@ PYTHON="conda run -n shapeit4 python"
 # Path to split_segments.py
 SPLIT_SEGMENTS_PY="${SCRIPT_DIR}/../pipeline/split_segments.py"
 
-# BAM filename suffix patterns to try (EXP08A takes priority over EXP08B)
-BAM_SUFFIXES=("-TSO500-EXP08A.mdup.rg.bam" "-TSO500-EXP08B.mdup.rg.bam")
+# BAM filename suffix patterns to try (EXP08A takes priority over EXP08B).
+# Handles both legacy mdup.rg naming and plain .bam naming from new transfers.
+# HRD variants listed before plain so sample_from_bam yields SAMPLE-HRD correctly.
+BAM_SUFFIXES=(
+    "-TSO500-EXP08A.mdup.rg.bam"
+    "-TSO500-EXP08B.mdup.rg.bam"
+    "-TSO500-HRD-EXP08A.bam"
+    "-TSO500-HRD-EXP08B.bam"
+    "-TSO500-EXP08A.bam"
+    "-TSO500-EXP08B.bam"
+)
 
 # Known TSV suffixes that the pipeline can read directly (order = priority)
 KNOWN_TSV_SUFFIXES=(
@@ -187,7 +196,7 @@ n_tsv_only=0
 
 # Collect all BAM files (deduplicate per sample: prefer EXP08A over EXP08B)
 declare -A bam_for_sample
-for bam in "${BAM_DIR}"/*.mdup.rg.bam; do
+for bam in "${BAM_DIR}"/*.bam; do
     [[ -f "$bam" ]] || continue
     sample="$(sample_from_bam "$bam")"
     # Only record the first match per sample (EXP08A wins because the glob is sorted)

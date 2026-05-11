@@ -18,10 +18,11 @@
 #   bash orchestrate_pipeline.sh [OPTIONS]
 #
 # Options:
-#   --bam-dir DIR    Directory with *.mdup.rg.bam files
-#                    (default: tso_samples/rg_bam)
-#   --tsv-dir DIR    Directory where _qc.tsv files are/will be written
-#                    (default: 20260225_GoldStandard_mpileup_stats_q30/results)
+#   --bam-dir DIR       Directory with *.bam files (default: tso_samples/rg_bam)
+#   --tsv-dir DIR       Directory where _qc.tsv files are/will be written
+#                       (default: 20260225_GoldStandard_mpileup_stats_q30/results)
+#   --segments-dir DIR  Pre-existing per-sample segments directory; skips
+#                       split_segments.py output writes (reuse a prior run's dir)
 #
 # Examples:
 #   # Default (existing samples)
@@ -44,31 +45,32 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # DEFAULTS — overridable via CLI arguments
 # ============================================================
 
-# Directory that contains *.mdup.rg.bam files
+# Directory that contains *.bam files
 BAM_DIR="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/rg_bam"
 
 # Directory where _qc.tsv files live (already parsed) or will be written (from BAMs)
 # The pipeline (Stage 1+) reads from this directory.
 TSV_DIR="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/20260225_GoldStandard_mpileup_stats_q30/results"
 
-# ============================================================
-# Parse CLI arguments
-# ============================================================
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --bam-dir) BAM_DIR="$2"; shift 2 ;;
-        --tsv-dir) TSV_DIR="$2"; shift 2 ;;
-        *) echo "[ERROR] Unknown argument: $1"; exit 1 ;;
-    esac
-done
+# Per-sample segments directory. Empty = let split_segments.py create a dated dir.
+# Pass --segments-dir to reuse an existing one (skips split_segments.py writes).
+SEGMENTS_DIR=""
 
 # Combined TSO500 segment file — all samples in one CSV.
 # split_segments.py reads this and writes one CSV per sample to SEGMENTS_DIR.
 COMBINED_SEGMENTS="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/unique_copyright_100kb_abs_segtable_free_purity_filtered_unique.csv"
 
-# Where per-sample segment CSVs will be written (auto-named YYYYMMDD_segments).
-# Leave empty to let split_segments.py choose the date-stamped default.
-SEGMENTS_DIR=""
+# ============================================================
+# Parse CLI arguments
+# ============================================================
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --bam-dir)      BAM_DIR="$2";      shift 2 ;;
+        --tsv-dir)      TSV_DIR="$2";      shift 2 ;;
+        --segments-dir) SEGMENTS_DIR="$2"; shift 2 ;;
+        *) echo "[ERROR] Unknown argument: $1"; exit 1 ;;
+    esac
+done
 
 # Python interpreter with pandas available
 PYTHON="conda run -n shapeit4 python"
@@ -107,18 +109,32 @@ MAX_PARALLEL_MPILEUP=10
 
 # ============================================================
 # Helper: derive sample name from BAM path
+# Non-HRD: JBLAB17012-TSO500-EXP08B.{mdup.rg.,}bam  → JBLAB17012
+# HRD:     JBLAB17012-TSO500-HRD-EXP08B.bam           → JBLAB17012-HRD
 # ============================================================
 sample_from_bam() {
     local bam="$1"
     local base
     base="$(basename "$bam")"
+
+    # New plain-naming: regex captures JBLAB_ID and optional -HRD
+    if [[ "$base" =~ ^(JBLAB[^-]+-TSO500(-HRD)?)-EXP[0-9]+[AB]\.bam$ ]]; then
+        # ${BASH_REMATCH[1]} = JBLAB17012-TSO500[-HRD]; strip trailing -TSO500[-HRD]
+        local prefix="${BASH_REMATCH[1]}"
+        local hrd="${BASH_REMATCH[2]}"   # "-HRD" or ""
+        echo "${prefix%-TSO500*}${hrd}"
+        return
+    fi
+
+    # Legacy mdup.rg naming: JBLAB17012-TSO500-EXP08B.mdup.rg.bam
     for sfx in "${BAM_SUFFIXES[@]}"; do
         if [[ "$base" == *"$sfx" ]]; then
             echo "${base%$sfx}"
             return
         fi
     done
-    # Fallback: strip from last -TSO500-
+
+    # Last resort
     echo "${base%-TSO500-*}"
 }
 
@@ -151,29 +167,34 @@ fi
 
 # ============================================================
 # Pre-processing: split combined segments → per-sample CSVs
+# (skipped when --segments-dir is passed — reuses an existing dir)
 # ============================================================
 echo "============================================================"
 echo "Pre-processing: split_segments"
 echo "============================================================"
 
-if [[ ! -f "$COMBINED_SEGMENTS" ]]; then
-    echo "[ERROR] Combined segments file not found: $COMBINED_SEGMENTS"
-    exit 1
-fi
+if [[ -n "$SEGMENTS_DIR" ]]; then
+    [[ -d "$SEGMENTS_DIR" ]] || { echo "[ERROR] --segments-dir not found: $SEGMENTS_DIR"; exit 1; }
+    echo "[INFO] Reusing existing segments dir (no writes): $SEGMENTS_DIR"
+else
+    if [[ ! -f "$COMBINED_SEGMENTS" ]]; then
+        echo "[ERROR] Combined segments file not found: $COMBINED_SEGMENTS"
+        exit 1
+    fi
 
-SPLIT_ARGS=(--all --combined "$COMBINED_SEGMENTS")
-[[ -n "$SEGMENTS_DIR" ]] && SPLIT_ARGS+=(--outdir "$SEGMENTS_DIR")
+    SPLIT_ARGS=(--all --combined "$COMBINED_SEGMENTS")
 
-# Capture the raw_segments_dir printed by split_segments.py
-SPLIT_OUTPUT=$($PYTHON "$SPLIT_SEGMENTS_PY" "${SPLIT_ARGS[@]}" 2>&1)
-echo "$SPLIT_OUTPUT"
+    # Capture the raw_segments_dir printed by split_segments.py
+    SPLIT_OUTPUT=$($PYTHON "$SPLIT_SEGMENTS_PY" "${SPLIT_ARGS[@]}" 2>&1)
+    echo "$SPLIT_OUTPUT"
 
-# Extract the output directory from the last raw_segments_dir= line
-SEGMENTS_DIR=$(echo "$SPLIT_OUTPUT" | grep "^\\[split_segments\\] raw_segments_dir=" | tail -1 | cut -d= -f2)
+    # Extract the output directory from the last raw_segments_dir= line
+    SEGMENTS_DIR=$(echo "$SPLIT_OUTPUT" | grep "^\\[split_segments\\] raw_segments_dir=" | tail -1 | cut -d= -f2)
 
-if [[ -z "$SEGMENTS_DIR" ]]; then
-    echo "[ERROR] Could not determine SEGMENTS_DIR from split_segments.py output."
-    exit 1
+    if [[ -z "$SEGMENTS_DIR" ]]; then
+        echo "[ERROR] Could not determine SEGMENTS_DIR from split_segments.py output."
+        exit 1
+    fi
 fi
 
 echo "[INFO] raw_segments_dir resolved to: $SEGMENTS_DIR"

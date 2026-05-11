@@ -297,6 +297,8 @@ if [[ ! -f "$RUN_CONFIG" ]]; then
     sed \
         -e "s|date: \"YYYYMMDD\"|date: \"${RUN_DATE}\"|" \
         -e "s|raw_segments_dir:.*|raw_segments_dir: \"${SEGMENTS_DIR}\"|" \
+        -e "s|tso_samples/RESULTS_DIR|tso_samples/$(basename "${TSV_DIR}")|" \
+        -e "s|THRESHOLDS_DATE|20260406|" \
         "$TEMPLATE" > "$RUN_CONFIG"
     echo "[INFO] Generated run config: $RUN_CONFIG"
 else

@@ -44,3 +44,6 @@ WORKLOG.md
 # Run-specific configs (contain cluster-local absolute paths)
 # Use configs/pipeline_config_template.yaml to generate your own
 configs/pipeline_config_[0-9]*.yaml
+
+# Run-specific sbatch scripts (hardcoded paths/dates — not reusable)
+slurm/run_scarHRD_[0-9]*.sbatch

@@ -28,8 +28,7 @@ set -euo pipefail
 SAMPLE="${1:?Usage: sbatch run_parse_mpileup.sbatch SAMPLE OUTDIR}"
 OUTDIR="${2:?Usage: sbatch run_parse_mpileup.sbatch SAMPLE OUTDIR}"
 
-SCRIPT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
-REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_DIR="${REPO_DIR:?REPO_DIR not set — submit via orchestrate_pipeline.sh or with --export=ALL,REPO_DIR=...}"
 
 RAW_TSV="${OUTDIR}/${SAMPLE}_allele_counts_snp6_wrapper_qualityMetrics_q30Pass.tsv"
 QC_TSV="${OUTDIR}/${SAMPLE}_qc.tsv"

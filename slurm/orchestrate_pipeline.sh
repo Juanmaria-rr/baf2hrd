@@ -265,6 +265,7 @@ for sample in $(echo "${!bam_for_sample[@]}" | tr ' ' '\n' | sort); do
     jid_parse=$(sbatch \
         --parsable \
         --dependency=afterok:"$jid_mpileup" \
+        --export=ALL,REPO_DIR="$REPO_DIR" \
         "${SCRIPT_DIR}/run_parse_mpileup.sbatch" \
         "$sample" \
         "$TSV_DIR")

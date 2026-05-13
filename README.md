@@ -15,7 +15,9 @@ BAM files
    └── Stage 1: per-sample BAF analysis → segments + manifest
    └── Stage 2: consolidation → merged dataset
    └── Stage 3: allele-specific CN inference → scarHRD inputs
-                 ↑ optimised by autoresearch/
+   │             ↑ optimised by autoresearch/
+   └── Stage 4: scarHRD → HRD scores
+   └── QC report → {base_dir}/qc_report.html
 ```
 
 ## Structure
@@ -23,7 +25,10 @@ BAM files
 ```
 pipeline/     Python source (main pipeline + utilities)
   split_segments.py        ← pre-processing: combined segtable → per-sample CSVs
+  qc_report.py             ← post-pipeline QC report (HTML autocontenido)
 slurm/        SLURM submission scripts
+  orchestrate_pipeline.sh  ← entry point; encadena Stage 0 → 4 → QC report
+  run_qc_report.sbatch     ← lanzamiento ad hoc del QC report
 configs/      Per-run YAML configuration (auto-generated per run)
 autoresearch/ Autonomous loop for improving Stage 3 classification
 ```
@@ -43,6 +48,8 @@ The orchestrator will:
 2. Auto-generate `configs/pipeline_config_YYYYMMDD.yaml` with the correct paths
 3. Submit Stage 0 (mpileup → `_qc.tsv`) per sample via SLURM
 4. Submit Stages 1–3 as a dependent job once all Stage 0 jobs complete
+5. Submit Stage 4 (scarHRD) dependent on Stages 1–3
+6. Submit the QC report dependent on Stage 4 → `{base_dir}/qc_report.html`
 
 If `--bam-dir` / `--tsv-dir` are omitted, defaults to the original `rg_bam` and
 `20260225_GoldStandard_mpileup_stats_q30/results` directories.
@@ -71,6 +78,33 @@ rm /storage/.../tso_samples/rg_bam_20260505_batch01/*.bam
 
 Batch directories follow the convention `rg_bam_YYYYMMDD_batchNN` (BAMs) and
 `YYYYMMDD_batchNN_mpileup/results` (TSV output).
+
+### QC report (ad hoc)
+
+El orchestrator lanza el QC report automáticamente al final de cada run. Para regenerarlo
+sobre un run ya procesado:
+
+```bash
+sbatch --export=ALL,CONFIG=configs/pipeline_config_YYYYMMDD.yaml \
+  slurm/run_qc_report.sbatch
+```
+
+O directamente sin SLURM:
+
+```bash
+conda run -n shapeit4 python pipeline/qc_report.py \
+  --config configs/pipeline_config_YYYYMMDD.yaml
+```
+
+El HTML resultante se escribe en `{base_dir}/qc_report.html` e incluye:
+
+| Plot | Qué muestra |
+|------|-------------|
+| BAF coverage | `n_positions` por segmento y muestra — detecta cobertura esparsa |
+| outer_mass por CN | Distribución de la feature de decisión con líneas de threshold calibradas |
+| Heatmap de margen | Qué segmentos caen cerca del límite de clasificación (inciertos) |
+| Composición alélica | Fracción LoH / Balanced / AI / Deletion por muestra (DP=8) |
+| Pre/post-merge | Compresión de segmentos tras el merge por adyacencia |
 
 ### Manual invocation (single stage or debugging)
 
@@ -116,6 +150,8 @@ chromosome,start,end,segVal,sample
 | 1 — BAF analysis | functional |
 | 2 — Consolidation | functional |
 | 3 — Allele-specific CN | functional · being optimised |
+| 4 — scarHRD scoring | functional |
+| QC report | functional · auto-lanzado por orchestrator |
 | autoresearch loop | active |
 
 Current `val_allelic_acc` baseline: **0.922** (ASCAT ground truth, DP≥8).

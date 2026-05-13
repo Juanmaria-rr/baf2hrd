@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BAF-to-HRD Pipeline — Revisión técnica</title>
+<style>
+  :root {
+    --blue:    #2563eb;
+    --blue-l:  #dbeafe;
+    --green:   #16a34a;
+    --green-l: #dcfce7;
+    --orange:  #ea580c;
+    --orange-l:#ffedd5;
+    --red:     #dc2626;
+    --red-l:   #fee2e2;
+    --gray:    #6b7280;
+    --gray-l:  #f3f4f6;
+    --purple:  #7c3aed;
+    --purple-l:#ede9fe;
+    --dark:    #1e293b;
+    --border:  #e2e8f0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f8fafc;
+    color: var(--dark);
+    line-height: 1.6;
+    font-size: 14px;
+  }
+  header {
+    background: var(--dark);
+    color: white;
+    padding: 28px 40px;
+    border-bottom: 4px solid var(--blue);
+  }
+  header h1 { font-size: 1.8em; font-weight: 700; margin-bottom: 6px; }
+  header p  { color: #94a3b8; font-size: 0.9em; }
+  .toc {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px 28px;
+    margin: 24px 40px;
+    max-width: 420px;
+  }
+  .toc h3 { font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.05em; color: var(--gray); margin-bottom: 10px; }
+  .toc ol { padding-left: 18px; }
+  .toc li { margin: 4px 0; }
+  .toc a  { color: var(--blue); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  main { max-width: 1100px; margin: 0 auto; padding: 0 40px 60px; }
+  section {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 28px;
+    overflow: hidden;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .badge {
+    background: var(--blue);
+    color: white;
+    font-size: 0.72em;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .badge.green  { background: var(--green); }
+  .badge.orange { background: var(--orange); }
+  .badge.purple { background: var(--purple); }
+  .badge.red    { background: var(--red); }
+  .badge.gray   { background: var(--gray); }
+  .section-header h2 { font-size: 1.1em; font-weight: 600; }
+  .section-header .subtitle { color: var(--gray); font-size: 0.85em; }
+  .section-body { padding: 20px 24px; }
+  .subsection { margin-bottom: 22px; }
+  .subsection h3 {
+    font-size: 0.88em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gray);
+    margin-bottom: 10px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.87em;
+    margin-top: 6px;
+  }
+  th {
+    background: var(--gray-l);
+    text-align: left;
+    padding: 7px 12px;
+    font-weight: 600;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+  }
+  td {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f8fafc; }
+  code {
+    background: var(--gray-l);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+    font-size: 0.9em;
+    color: #b91c1c;
+  }
+  .formula {
+    background: var(--gray-l);
+    border-left: 3px solid var(--blue);
+    padding: 10px 16px;
+    border-radius: 0 6px 6px 0;
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: 0.88em;
+    margin: 8px 0;
+    color: #1e40af;
+  }
+  .warn {
+    background: var(--orange-l);
+    border: 1px solid #fdba74;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 0.87em;
+    margin: 10px 0;
+    display: flex;
+    gap: 8px;
+  }
+  .warn-icon { flex-shrink: 0; }
+  .info {
+    background: var(--blue-l);
+    border: 1px solid #93c5fd;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 0.87em;
+    margin: 10px 0;
+  }
+  .tag {
+    display: inline-block;
+    font-size: 0.75em;
+    padding: 1px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+  .tag.tier1  { background:#dcfce7; color:#15803d; }
+  .tag.tier2  { background:#dbeafe; color:#1d4ed8; }
+  .tag.tier3  { background:#fef9c3; color:#a16207; }
+  .tag.heur   { background:#ffe4e6; color:#be123c; }
+  .tag.nobaf  { background:#f3f4f6; color:#6b7280; }
+  .cn-table td:nth-child(3),
+  .cn-table td:nth-child(4),
+  .cn-table td:nth-child(5) { font-family: monospace; }
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 12px 0;
+    font-size: 0.88em;
+  }
+  .flow-box {
+    background: var(--gray-l);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 14px;
+    font-weight: 500;
+  }
+  .flow-arrow { color: var(--gray); font-size: 1.2em; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
+  .mini-card {
+    background: var(--gray-l);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+  .mini-card h4 { font-size: 0.85em; font-weight: 700; color: var(--gray); margin-bottom: 8px; }
+  ul { padding-left: 18px; }
+  li { margin: 3px 0; }
+  .highlight { background: #fef9c3; border-radius: 3px; padding: 0 3px; }
+  .issue-box {
+    background: var(--red-l);
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 10px 0;
+    font-size: 0.88em;
+  }
+  .issue-box h4 { color: var(--red); font-weight: 700; margin-bottom: 6px; }
+  .ok-box {
+    background: var(--green-l);
+    border: 1px solid #86efac;
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 10px 0;
+    font-size: 0.88em;
+  }
+  .ok-box h4 { color: var(--green); font-weight: 700; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>BAF-to-HRD Pipeline — Revisión técnica completa</h1>
+  <p>Generado 2026-05-12 · Rama <code style="background:#334155;color:#e2e8f0">master</code> · Directorio <code style="background:#334155;color:#e2e8f0">/storage/scratch01/groups/co/cn_extra/alleleSpecific/baf_hrd_pipeline</code></p>
+</header>
+
+<nav class="toc" style="margin-left:40px">
+  <h3>Contenido</h3>
+  <ol>
+    <li><a href="#overview">Flujo global</a></li>
+    <li><a href="#stage0">Stage 0 — BAM → _qc.tsv</a></li>
+    <li><a href="#stage1">Stage 1 — BAF per-sample analysis</a></li>
+    <li><a href="#calibration">Calibración de thresholds</a></li>
+    <li><a href="#stage2">Stage 2 — Consolidación</a></li>
+    <li><a href="#stage3">Stage 3 — CN alelo-específico</a></li>
+    <li><a href="#stage4">Stage 4 — scarHRD</a></li>
+    <li><a href="#qcreport">QC report</a></li>
+    <li><a href="#config">Parámetros de configuración</a></li>
+    <li><a href="#issues">Puntos críticos y posibles mejoras</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- OVERVIEW                                                        -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<section id="overview">
+  <div class="section-header">
+    <span class="badge gray">OVERVIEW</span>
+    <div>
+      <h2>Flujo global del pipeline</h2>
+      <span class="subtitle">orchestrate_pipeline.sh → stages 0–4</span>
+    </div>
+  </div>
+  <div class="section-body">
+    <div class="flow">
+      <div class="flow-box">BAM files</div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box">Stage 0a<br><small>bcftools mpileup</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box">Stage 0b<br><small>parse_mpileup.py</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box"><code>_qc.tsv</code></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box">Stage 1<br><small>BAF analysis</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box">Stage 2<br><small>Consolidación</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box">Stage 3<br><small>CN alélico</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box">Stage 4<br><small>scarHRD</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box"><code>ALL_scarHRD_scores.csv</code></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box" style="border-color:var(--purple)">QC report<br><small>qc_report.py</small></div>
+      <span class="flow-arrow">→</span>
+      <div class="flow-box" style="border-color:var(--purple)"><code>qc_report.html</code></div>
+    </div>
+    <div class="info">
+      <strong>Entrada de calibración (separada):</strong> un subconjunto de muestras ASCAT downsampled
+      (con <code>nMajor</code>/<code>nMinor</code> ground-truth) pasa por Stages 1–2 y luego
+      <code>calibrate_thresholds.py</code> para producir <code>thresholds_lookup.json</code>.
+      Las muestras TSO500 de aplicación NO tienen ground-truth y van directamente a Stage 3.
+    </div>
+    <table>
+      <tr><th>Stage</th><th>Script</th><th>Input</th><th>Output</th></tr>
+      <tr><td>0a</td><td><code>run_mpileup_single.sbatch</code></td><td>*.bam</td><td>*_allele_counts_snp6_wrapper_qualityMetrics_q30Pass.tsv</td></tr>
+      <tr><td>0b</td><td><code>parse_mpileup.py</code></td><td>*_q30Pass.tsv</td><td>*_qc.tsv</td></tr>
+      <tr><td>1</td><td><code>baf_to_hrd_pipeline.py</code></td><td>_qc.tsv + segment CSVs</td><td>segments_per_sample/, bafs_hits_per_sample/, scarHRD_inputs/, pipeline_manifest.csv</td></tr>
+      <tr><td>cal.</td><td><code>calibrate_thresholds.py</code></td><td>merged CSV (ASCAT rows)</td><td>thresholds_lookup.json</td></tr>
+      <tr><td>2</td><td><code>baf_to_hrd_pipeline.py</code></td><td>pipeline_manifest.csv</td><td>merged_segments_baf_metrics_ALL_with20bins_enhancedFeatures.csv</td></tr>
+      <tr><td>3</td><td><code>baf_to_hrd_pipeline.py</code></td><td>merged CSV + thresholds_lookup.json</td><td>scarHRD_inputs_thresholds/*_scarHRD_input.txt</td></tr>
+      <tr><td>4</td><td><code>run_scarHRD.R</code></td><td>*_scarHRD_input.txt</td><td>ALL_scarHRD_scores.csv</td></tr>
+      <tr><td>QC</td><td><code>qc_report.py</code></td><td>merged CSV + scarHRD_inputs_thresholds/ + thresholds_lookup.json</td><td>qc_report.html</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- STAGE 0                                                         -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<section id="stage0">
+  <div class="section-header">
+    <span class="badge gray">STAGE 0</span>
+    <div>
+      <h2>BAM → _qc.tsv</h2>
+      <span class="subtitle">run_mpileup_single.sbatch + parse_mpileup.py</span>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <div class="subsection">
+      <h3>Stage 0a — bcftools mpileup</h3>
+      <ul>
+        <li>Herramienta: <code>bcftools mpileup</code> con calidad mínima de base <strong>q30</strong> (flag <code>-q 30</code>).</li>
+        <li>Posiciones: panel SNP6 (<em>snp6 wrapper</em>).</li>
+        <li>Campos exportados vía <code>bcftools query</code>: <code>CHROM POS REF ALT DP AD ADF ADR SP MQBZ BQBZ</code>.</li>
+        <li>Output: <code>*_allele_counts_snp6_wrapper_qualityMetrics_q30Pass.tsv</code> (sin cabecera).</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h3>Stage 0b — parse_mpileup.py</h3>
+      <table>
+        <tr><th>Columna input</th><th>Descripción</th></tr>
+        <tr><td><code>CHROM</code></td><td>Cromosoma (con prefijo chr)</td></tr>
+        <tr><td><code>POS</code></td><td>Posición 1-based</td></tr>
+        <tr><td><code>REF / ALT</code></td><td>Alelos de referencia y alternativo</td></tr>
+        <tr><td><code>DP</code></td><td>Depth total</td></tr>
+        <tr><td><code>AD</code></td><td>Allele depth (formato <code>ref,alt</code>)</td></tr>
+        <tr><td><code>ADF / ADR</code></td><td>Allele depth forward / reverse</td></tr>
+        <tr><td><code>SP / MQBZ / BQBZ</code></td><td>Stats QC adicionales (strand-bias test, etc.)</td></tr>
+      </table>
+
+      <h3 style="margin-top:16px">Procesamiento</h3>
+      <ol style="padding-left:20px;margin-top:6px">
+        <li><strong>Parsear AD →</strong> <code>Ref_Reads, Alt_Reads</code>. DP de respaldo = Ref + Alt si DP es NaN.</li>
+        <li><strong>Normalizar ALT:</strong> <code>&lt;*&gt;</code> → <code>N</code>; multi-alélicos: conservar sólo el primer alelo.</li>
+        <li><strong>Calcular BAF:</strong></li>
+      </ol>
+      <div class="formula">BAF = Alt_Reads / (Ref_Reads + Alt_Reads)   [0 si denominador = 0]</div>
+      <ol style="padding-left:20px" start="4">
+        <li><strong>Inferir genotipo:</strong> BAF &lt; 0.01 → <code>0/0</code> | BAF &gt; 0.99 → <code>1/1</code> | resto → <code>0/1</code>.</li>
+        <li><strong>QC strand-bias:</strong> una posición es flagged si <code>Alt_Reads &gt; 0</code> AND (<code>alt_fwd == 0</code> OR <code>alt_rev == 0</code>). Razón: artefactos de PCR clásicos aparecen solo en una hebra.</li>
+      </ol>
+
+      <table style="margin-top:12px">
+        <tr><th>Columna output</th><th>Tipo</th><th>Descripción</th></tr>
+        <tr><td><code>CHROM POS REF ALT DP</code></td><td>—</td><td>Pasadas desde input</td></tr>
+        <tr><td><code>Ref_Reads / Alt_Reads</code></td><td>int</td><td>De AD</td></tr>
+        <tr><td><code>BAF</code></td><td>float [0,1]</td><td>Alt/(Ref+Alt)</td></tr>
+        <tr><td><code>GT_inferred</code></td><td>str</td><td>0/0 | 0/1 | 1/1</td></tr>
+        <tr><td><code>problematic</code></td><td>0/1</td><td>1 = strand-bias flagged</td></tr>
+        <tr><td><code>problematic_reason</code></td><td>str|NaN</td><td>"strand_bias" o NaN</td></tr>
+      </table>
+      <div class="warn">
+        <span class="warn-icon">⚠️</span>
+        <span>El filtro de strand-bias es el <strong>único</strong> filtro de calidad posicional que se aplica aquí. No se filtra por MQBZ ni BQBZ aunque estén disponibles.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- STAGE 1                                                         -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<section id="stage1">
+  <div class="section-header">
+    <span class="badge">STAGE 1</span>
+    <div>
+      <h2>Per-sample BAF analysis</h2>
+      <span class="subtitle">baf_to_hrd_pipeline.py → run_script1()</span>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <div class="subsection">
+      <h3>1.1 · Carga y normalización de segmentos</h3>
+      <ul>
+        <li>Fichero esperado: <code>{sample}_100kb_abs_segtable_free_purity_filtered_unique.csv</code></li>
+        <li>Columnas canónicas: <code>chromosome, start, end, total_cn</code>. Si hay <code>nMajor, nMinor</code>, se calcula <code>total_cn = nMajor + nMinor</code> (con advertencia si difiere &gt;0.5 del valor existente).</li>
+        <li>Normalización cromosómica: strip del prefijo <code>chr</code>; <code>X→23</code>, <code>Y→24</code>; drop de rows con chr no numérico.</li>
+        <li><strong>HRD suffix lookup:</strong> muestras que terminan en <code>-HRD</code> (ej. <code>JBLAB17012-HRD</code>) buscan segmentos con el nombre base (<code>JBLAB17012</code>). Esto es correcto: comparten la misma biología de CN pero el BAF se mide con el panel HRD.</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h3>1.2 · Filtros aplicados a las posiciones BAF</h3>
+      <table>
+        <tr><th>Filtro</th><th>Criterio</th><th>Variable</th></tr>
+        <tr><td>DP mínimo</td><td><code>DP ≥ dp</code> para cada valor en <code>DP_VALUES</code></td><td><code>DP_VALUES = [0, 2, 4, 8]</code></td></tr>
+        <tr><td>Strand-bias</td><td><code>problematic_reason IS NULL</code> (columna <code>_ok</code>)</td><td>Calculado en Stage 0b</td></tr>
+        <tr><td>DP &gt; 0</td><td>Aplicado adicionalmente en <code>prepare_baf_origin()</code></td><td>Hardcoded</td></tr>
+        <tr><td>Posiciones NaN</td><td>Drop filas con NaN en CHROM, POS o BAF_n</td><td>—</td></tr>
+      </table>
+      <div class="info">Los 4 valores de DP se procesan <strong>en paralelo por muestra</strong> (bucle interno). Cada valor genera un conjunto de estadísticas separado, lo que permite comparar el efecto del filtrado.</div>
+    </div>
+
+    <div class="subsection">
+      <h3>1.3 · Corrección por pureza (opcional)</h3>
+      <p>Se aplica solo si se proporciona un <code>purity_file</code> con columnas <code>sample, purity, ploidy</code>.</p>
+      <div class="formula">
+BAF_corrected = 0.5 + (BAF_raw - 0.5) / purity    [si BAF ≥ 0.5]
+BAF_corrected = 0.5 - (0.5 - BAF_raw) / purity    [si BAF &lt; 0.5]
+BAF_corrected = clip(BAF_corrected, 0, 1)
+      </div>
+      <div class="warn">
+        <span class="warn-icon">⚠️</span>
+        <span>En las muestras TSO500 actuales <code>purity_file = null</code>, por lo que <strong>no se aplica corrección por pureza</strong>.
+        <code>BAF_corrected = BAF_raw</code>. Los thresholds de calibración también usan <code>outer_mass_raw</code> (sin corrección) para mantener la misma escala. Si en algún momento se activa la corrección, los thresholds deberían recalibrarse.</span>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <h3>1.4 · Binning BAF y cálculo de outer/inner mass</h3>
+      <p>Para cada segmento se dividen las posiciones BAF en <strong>N_BINS = 20 bins</strong> uniformes en [0, 1] (ancho = 0.05):</p>
+      <div class="formula">
+bins: [0.00–0.05), [0.05–0.10), ..., [0.95–1.00]  (el último bin es cerrado por la derecha)
+      </div>
+      <p style="margin-top:8px">Para cada bin se calcula <code>count</code> (n posiciones) y <code>ratio</code> = count / n_total_del_segmento (tanto para BAF corrected como raw).</p>
+
+      <div class="grid2" style="margin-top:12px">
+        <div class="mini-card">
+          <h4>outer_mass (= outer_mass_raw)</h4>
+          Suma de <code>ratio</code> de los bins donde: <br>
+          <code>upper ≤ 0.25</code> OR <code>lower ≥ 0.75</code><br><br>
+          Bins outer: <code>[0.00–0.05)</code>, <code>[0.05–0.10)</code>, ..., <code>[0.20–0.25)</code>,
+          <code>[0.75–0.80)</code>, ..., <code>[0.95–1.00]</code><br><br>
+          <strong>Interpreta:</strong> fracción de posiciones con BAF extremo (cerca de 0 o 1). Alta en LoH.
+        </div>
+        <div class="mini-card">
+          <h4>inner_mass</h4>
+          Suma de <code>ratio</code> de los bins donde:<br>
+          <code>0.25 ≤ lower &lt; 0.75</code> AND <code>upper ≤ 0.75</code><br><br>
+          Bins inner: <code>[0.25–0.30)</code>, ..., <code>[0.70–0.75)</code><br><br>
+          <strong>Interpreta:</strong> fracción de posiciones en zona central. Alta en segmentos balanceados.
+        </div>
+      </div>
+
+      <div class="warn" style="margin-top:12px">
+        <span class="warn-icon">⚠️</span>
+        <span>
+          La variable de decisión en Stage 3 es <code>outer_mass_raw</code> (calculada desde el BAF sin corrección de pureza),
+          no <code>outer_mass</code> (desde BAF corregido). Esto asegura consistencia con la calibración.
+          Si el campo <code>outer_mass_raw</code> no existe en el CSV, el código busca <code>outer_mass_raw_x</code>,
+          <code>outer_mass_raw_y</code> (artefactos de merge pandas) y finalmente cae a <code>outer_mass</code> con advertencia.
+        </span>
+      </div>
+
+      <p style="margin-top:10px"><strong>Métricas de resumen por segmento</strong> (calculadas sobre BAF_corrected y BAF_raw por separado):</p>
+      <table>
+        <tr><th>Métrica</th><th>Descripción</th></tr>
+        <tr><td><code>n_positions</code></td><td>N posiciones BAF dentro del segmento</td></tr>
+        <tr><td><code>baf_mean / baf_median</code></td><td>Media y mediana del BAF</td></tr>
+        <tr><td><code>baf_sd</code></td><td>Desviación estándar</td></tr>
+        <tr><td><code>baf_min / baf_max</code></td><td>Rango</td></tr>
+        <tr><td><code>baf_q25 / baf_q75 / baf_iqr</code></td><td>Cuartiles e IQR</td></tr>
+      </table>
+    </div>
+
+    <div class="subsection">
+      <h3>1.5 · Outputs de Stage 1</h3>
+      <table>
+        <tr><th>Fichero/directorio</th><th>Contenido</th></tr>
+        <tr><td><code>segments_per_sample/segments_{stem}.csv</code></td><td>Segmentos + métricas BAF por DP (filas separadas por dp_filter)</td></tr>
+        <tr><td><code>bafs_hits_per_sample/alldp_baf_hits_{stem}.csv</code></td><td>Posiciones BAF individuales que caen dentro de segmentos</td></tr>
+        <tr><td><code>scarHRD_inputs/{stem}_dp{dp}_scarHRD_input.txt</code></td><td>Input para scarHRD (Stage 1 legacy — sin thresholds calibrados)</td></tr>
+        <tr><td><code>pipeline_manifest.csv</code></td><td>Índice de ficheros producidos por muestra</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- CALIBRATION                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<section id="calibration">
+  <div class="section-header">
+    <span class="badge purple">CALIBRACIÓN</span>
+    <div>
+      <h2>Calibración de thresholds outer_mass</h2>
+      <span class="subtitle">calibrate_thresholds.py</span>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <div class="subsection">
+      <h3>Objetivo y datos de entrada</h3>
+      <ul>
+        <li>Input: el CSV merged (Stage 2) de las muestras ASCAT-downsampled, que contienen <code>nMajor / nMinor</code> como ground-truth.</li>
+        <li>Feature: <code>outer_mass_raw</code> (fracción BAF sin corrección de pureza).</li>
+        <li>Filtro de muestra opcional: <code>calibration_samples_file</code> (lista de IDs) para un split 80/20 train/val honesto usando <code>split_samples.py</code>.</li>
+        <li>Mínimo segmentos por estado alélico: <code>min_samples = 50</code>.</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h3>Proceso por filtro DP</h3>
+      <p>Para cada valor de <code>dp_filter ∈ [0, 2, 4, 8]</code>:</p>
+      <ol style="padding-left:20px;margin-top:6px">
+        <li>Filtrar el CSV a filas con <code>dp_filter = dp</code> y <code>nMajor/nMinor not null</code>.</li>
+        <li>Clasificar cada segmento por estado alélico: <strong>LoH</strong> (nMin=0 o nMaj=0), <strong>Balanced</strong> (nMaj=nMin), <strong>AI</strong> (resto).</li>
+        <li>Para cada <code>total_cn</code> con suficientes datos, construir comparaciones binarias en orden de prioridad:
+          <ul>
+            <li>LoH vs Balanced</li>
+            <li>LoH vs AI</li>
+            <li>AI vs Balanced</li>
+          </ul>
+        </li>
+        <li>Para cada comparación: calcular ROC y seleccionar threshold por <strong>índice de Youden</strong> (argmax TPR−FPR).</li>
+      </ol>
+    </div>
+
+    <div class="subsection">
+      <h3>Métricas de separabilidad reportadas</h3>
+      <table>
+        <tr><th>Métrica</th><th>Descripción</th><th>Umbral orientativo</th></tr>
+        <tr><td>AUC-ROC</td><td>Área bajo la curva ROC</td><td>&gt;0.80 = buena separación</td></tr>
+        <tr><td>Cohen's d</td><td>Tamaño del efecto</td><td>&gt;0.80 = LARGE, &gt;0.50 = MEDIUM, ≤0.50 = LOW</td></tr>
+        <tr><td>Sensitivity / Specificity</td><td>En el threshold de Youden</td><td>—</td></tr>
+        <tr><td>Mann-Whitney p</td><td>Significación de diferencia entre distribuciones</td><td>—</td></tr>
+      </table>
+    </div>
+
+    <div class="subsection">
+      <h3>Formato del JSON de salida</h3>
+      <div class="formula">
+{
+  "0": {                     // dp_filter
+    "2": {                   // total_cn
+      "loh_vs_balanced": 0.9312,
+      "loh_vs_ai":       0.9127,
+      "ai_vs_balanced":  0.8543
+    },
+    "3": { ... },
+    ...
+  },
+  "2": { ... },
+  "4": { ... },
+  "8": { ... }
+}
+      </div>
+      <div class="info">El código soporta también el formato plano (sin clave de DP), aplicando los mismos thresholds a todos los DP. Si se usa el formato plano, Stage 3 emite una advertencia.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- STAGE 2                                                         -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<section id="stage2">
+  <div class="section-header">
+    <span class="badge">STAGE 2</span>
+    <div>
+      <h2>Consolidación</h2>
+      <span class="subtitle">baf_to_hrd_pipeline.py → run_script2()</span>
+    </div>
+  </div>
+  <div class="section-body">
+    <ul>
+      <li>Lee <code>pipeline_manifest.csv</code> (generado en Stage 1). Deduplica por <code>(sample_name, sample, file_type, baf_folder, segments_file, baf_hits_file)</code>.</li>
+      <li>Por cada fila del manifest: carga <code>segments_{stem}.csv</code>, opcionalmente añade <em>enhanced features</em> (si la función <code>add_enhanced_features_to_merged</code> está disponible en <code>functions.py</code>) y <em>length-normalized features</em>.</li>
+      <li>Concatena todos en un único CSV.</li>
+    </ul>
+    <p style="margin-top:10px">Columnas mínimas requeridas en cada fichero de segmentos:</p>
+    <div class="formula">sample, sample_name, segment_id, dp_filter, baf_folder,
+chromosome, start, end, total_cn,
+outer_mass, inner_mass,
+baf_mean, baf_median, baf_sd, baf_q25, baf_q75, baf_iqr</div>
+    <p style="margin-top:10px">Output: <code>merged_segments_baf_metrics_ALL_with20bins_enhancedFeatures.csv</code></p>
+    <div class="warn">
+      <span class="warn-icon">⚠️</span>
+      <span>En el CSV legacy del run <code>20260406</code> la columna era <code>outer_mass_raw_y</code> (artefacto de sufijo pandas del Stage 2 antiguo). El código de Stage 3 y calibración tiene lógica de fallback para detectarlo, pero genera advertencias.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- STAGE 3                                                         -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<section id="stage3">
+  <div class="section-header">
+    <span class="badge green">STAGE 3</span>
+    <div>
+      <h2>Inferencia de CN alelo-específico</h2>
+      <span class="subtitle">baf_to_hrd_pipeline.py → run_script3() → build_scarHRD_input_using_thresholds()</span>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <div class="subsection">
+      <h3>Preproceso</h3>
+      <ul>
+        <li><strong>Redondeo de total_cn:</strong> <code>totalCN = floor(total_cn_raw + 0.5)</code> (redondeo clásico).</li>
+        <li><strong>Variable de decisión:</strong> <code>outer_mass_raw</code> (con fallback a <code>outer_mass</code> si no existe).</li>
+        <li><strong>Iteración:</strong> por cada combinación <code>(sample, baf_folder)</code> × <code>dp_filter</code>.</li>
+        <li><strong>Thresholds:</strong> si no existe threshold para un DP exacto, se usa el más cercano.</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h3>Reglas de decisión por total_cn</h3>
+      <p>La tabla completa. Las columnas "Threshold" muestran el valor por defecto si el JSON no contiene esa clave.</p>
+      <table class="cn-table">
+        <tr>
+          <th>total_cn</th>
+          <th>Condición</th>
+          <th>A_cn : B_cn</th>
+          <th>Estado</th>
+          <th>Confianza</th>
+          <th>Tier</th>
+          <th>Threshold</th>
+        </tr>
+        <tr>
+          <td>0</td>
+          <td>Siempre</td>
+          <td>0 : 0</td>
+          <td>Deletion</td>
+          <td>0.99</td>
+          <td><span class="tag tier1">tier1</span></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>1</td>
+          <td>Siempre</td>
+          <td>1 : 0</td>
+          <td>LoH</td>
+          <td>0.95</td>
+          <td><span class="tag tier1">tier1</span></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td rowspan="3">2</td>
+          <td>outer_mass &gt; thr</td>
+          <td>2 : 0</td>
+          <td>LoH</td>
+          <td>0.90</td>
+          <td><span class="tag tier1">tier1</span></td>
+          <td rowspan="3"><code>loh_vs_balanced</code><br>default 0.93</td>
+        </tr>
+        <tr>
+          <td>outer_mass ≤ thr</td>
+          <td>1 : 1</td>
+          <td>Balanced</td>
+          <td>0.88</td>
+          <td><span class="tag tier1">tier1</span></td>
+        </tr>
+        <tr>
+          <td>no BAF</td>
+          <td>1 : 1</td>
+          <td>Balanced</td>
+          <td>0.50</td>
+          <td><span class="tag nobaf">no_baf</span></td>
+        </tr>
+        <tr>
+          <td rowspan="3">3</td>
+          <td>outer_mass &gt; thr</td>
+          <td>3 : 0</td>
+          <td>LoH</td>
+          <td>0.75</td>
+          <td><span class="tag tier2">tier2</span></td>
+          <td rowspan="3"><code>loh_vs_ai</code><br>default 0.92</td>
+        </tr>
+        <tr>
+          <td>outer_mass ≤ thr</td>
+          <td>2 : 1</td>
+          <td>AI</td>
+          <td>0.70</td>
+          <td><span class="tag tier2">tier2</span></td>
+        </tr>
+        <tr>
+          <td>no BAF</td>
+          <td>2 : 1</td>
+          <td>AI</td>
+          <td>0.50</td>
+          <td><span class="tag nobaf">no_baf</span></td>
+        </tr>
+        <tr>
+          <td rowspan="4">4</td>
+          <td>outer_mass &gt; loh_thr</td>
+          <td>4 : 0</td>
+          <td>LoH</td>
+          <td>0.75</td>
+          <td><span class="tag tier2">tier2</span></td>
+          <td rowspan="4"><code>loh_vs_balanced</code>=0.965<br><code>ai_vs_balanced</code>=0.85</td>
+        </tr>
+        <tr>
+          <td>ai_bal_thr &lt; outer_mass ≤ loh_thr</td>
+          <td>3 : 1</td>
+          <td>AI</td>
+          <td>0.65</td>
+          <td><span class="tag tier2">tier2</span></td>
+        </tr>
+        <tr>
+          <td>outer_mass ≤ ai_bal_thr</td>
+          <td>2 : 2</td>
+          <td>Balanced</td>
+          <td>0.72</td>
+          <td><span class="tag tier2">tier2</span></td>
+        </tr>
+        <tr>
+          <td>no BAF</td>
+          <td>2 : 2</td>
+          <td>Balanced</td>
+          <td>0.50</td>
+          <td><span class="tag nobaf">no_baf</span></td>
+        </tr>
+        <tr>
+          <td rowspan="3">5</td>
+          <td>outer_mass &gt; thr</td>
+          <td>5 : 0</td>
+          <td>LoH</td>
+          <td>0.70</td>
+          <td><span class="tag tier3">tier3</span></td>
+          <td rowspan="3"><code>loh_vs_ai</code><br>default 0.96</td>
+        </tr>
+        <tr>
+          <td>outer_mass ≤ thr</td>
+          <td>3 : 2</td>
+          <td>AI</td>
+          <td>0.60</td>
+          <td><span class="tag tier3">tier3</span></td>
+        </tr>
+        <tr>
+          <td>no BAF</td>
+          <td>3 : 2</td>
+          <td>AI</td>
+          <td>0.50</td>
+          <td><span class="tag nobaf">no_baf</span></td>
+        </tr>
+        <tr>
+          <td rowspan="3">6</td>
+          <td>outer_mass &gt; thr</td>
+          <td>4 : 2</td>
+          <td>AI</td>
+          <td>0.55</td>
+          <td><span class="tag tier3">tier3</span></td>
+          <td rowspan="3"><code>ai_vs_balanced</code><br>default 0.80</td>
+        </tr>
+        <tr>
+          <td>outer_mass ≤ thr</td>
+          <td>3 : 3</td>
+          <td>Balanced</td>
+          <td>0.60</td>
+          <td><span class="tag tier3">tier3</span></td>
+        </tr>
+        <tr>
+          <td>no BAF</td>
+          <td>4 : 2</td>
+          <td>AI</td>
+          <td>0.50</td>
+          <td><span class="tag nobaf">no_baf</span></td>
+        </tr>
+        <tr>
+          <td rowspan="3">7</td>
+          <td>outer_mass &gt; 0.95</td>
+          <td>7 : 0</td>
+          <td>LoH</td>
+          <td>0.60</td>
+          <td><span class="tag heur">tier3_heuristic</span></td>
+          <td rowspan="3">Heurístico: 0.95<br>(sin calibración)</td>
+        </tr>
+        <tr>
+          <td>outer_mass ≤ 0.95</td>
+          <td>4 : 3</td>
+          <td>AI</td>
+          <td>0.50</td>
+          <td><span class="tag heur">tier3_ai_default</span></td>
+        </tr>
+        <tr>
+          <td>no BAF</td>
+          <td>4 : 3</td>
+          <td>AI</td>
+          <td>0.40</td>
+          <td><span class="tag nobaf">no_baf</span></td>
+        </tr>
+        <tr>
+          <td rowspan="3">8</td>
+          <td>outer_mass &gt; thr</td>
+          <td>6 : 2</td>
+          <td>AI</td>
+          <td>0.50</td>
+          <td><span class="tag tier3">tier3</span></td>
+          <td rowspan="3"><code>ai_vs_balanced</code><br>default 0.81</td>
+        </tr>
+        <tr>
+          <td>outer_mass ≤ thr</td>
+          <td>4 : 4</td>
+          <td>Balanced</td>
+          <td>0.55</td>
+          <td><span class="tag tier3">tier3</span></td>
+        </tr>
+        <tr>
+          <td>no BAF</td>
+          <td>6 : 2</td>
+          <td>AI</td>
+          <td>0.50</td>
+          <td><span class="tag nobaf">no_baf</span></td>
+        </tr>
+        <tr>
+          <td rowspan="3">&gt;8<br>(odd)</td>
+          <td>outer_mass &gt; 0.95</td>
+          <td>⌈cn/2⌉ : ⌊cn/2⌋</td>
+          <td>LoH→cn:0</td>
+          <td>0.60</td>
+          <td><span class="tag heur">tier3_heuristic</span></td>
+          <td rowspan="6">Heurístico: 0.95<br>(sin calibración)</td>
+        </tr>
+        <tr>
+          <td>outer_mass ≤ 0.95</td>
+          <td>(cn+1)/2 : (cn-1)/2</td>
+          <td>AI</td>
+          <td>0.50</td>
+          <td><span class="tag heur">tier3_ai_default</span></td>
+        </tr>
+        <tr>
+          <td>no BAF</td>
+          <td>(cn+1)/2 : (cn-1)/2</td>
+          <td>AI</td>
+          <td>0.40</td>
+          <td><span class="tag nobaf">no_baf</span></td>
+        </tr>
+        <tr>
+          <td rowspan="3">&gt;8<br>(even)</td>
+          <td>outer_mass &gt; 0.95</td>
+          <td>cn : 0</td>
+          <td>LoH</td>
+          <td>0.60</td>
+          <td><span class="tag heur">tier3_heuristic</span></td>
+        </tr>
+        <tr>
+          <td>outer_mass ≤ 0.95</td>
+          <td>cn/2+1 : cn/2-1</td>
+          <td>AI</td>
+          <td>0.50</td>
+          <td><span class="tag heur">tier3_ai_default</span></td>
+        </tr>
+        <tr>
+          <td>no BAF</td>
+          <td>cn/2+1 : cn/2-1</td>
+          <td>AI</td>
+          <td>0.40</td>
+          <td><span class="tag nobaf">no_baf</span></td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="subsection">
+      <h3>Thresholds calibrados (thresholds_lookup.json)</h3>
+      <p style="margin-bottom:8px">Valores reales de <code>outer_mass_raw</code> del fichero <code>thresholds_lookup.json</code> (<code>20260406</code>), calibrados por índice de Youden. Un valor de <strong>1.00</strong> indica que la comparación no separó las clases (threshold en el extremo). Un valor de <strong>0.33–0.50</strong> sugiere insuficientes datos para esa celda.</p>
+      <table>
+        <tr>
+          <th>total_cn</th>
+          <th>Comparación</th>
+          <th>DP=0</th>
+          <th>DP=2</th>
+          <th>DP=4</th>
+          <th>DP=8</th>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><code>loh_vs_balanced</code></td>
+          <td>0.923</td>
+          <td>0.846</td>
+          <td>0.856</td>
+          <td>0.854</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><code>loh_vs_ai</code></td>
+          <td>0.933</td>
+          <td>0.859</td>
+          <td>0.850</td>
+          <td>0.882</td>
+        </tr>
+        <tr>
+          <td rowspan="3">4</td>
+          <td><code>loh_vs_balanced</code></td>
+          <td>0.925</td>
+          <td>0.851</td>
+          <td>0.846</td>
+          <td>0.826</td>
+        </tr>
+        <tr>
+          <td><code>loh_vs_ai</code></td>
+          <td>0.952</td>
+          <td>0.851</td>
+          <td>0.853</td>
+          <td>0.857</td>
+        </tr>
+        <tr>
+          <td><code>ai_vs_balanced</code></td>
+          <td>0.923</td>
+          <td>0.842</td>
+          <td>0.831</td>
+          <td>0.833</td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td><code>loh_vs_ai</code></td>
+          <td>0.919</td>
+          <td>0.833</td>
+          <td>0.800</td>
+          <td>0.844</td>
+        </tr>
+        <tr>
+          <td rowspan="3">6</td>
+          <td><code>loh_vs_balanced</code></td>
+          <td>0.936</td>
+          <td>0.867</td>
+          <td>0.833</td>
+          <td style="color:#dc2626;font-weight:600">1.000 ⚠</td>
+        </tr>
+        <tr>
+          <td><code>loh_vs_ai</code></td>
+          <td>0.936</td>
+          <td>0.867</td>
+          <td>0.882</td>
+          <td style="color:#dc2626;font-weight:600">1.000 ⚠</td>
+        </tr>
+        <tr>
+          <td><code>ai_vs_balanced</code></td>
+          <td>0.805</td>
+          <td>0.556</td>
+          <td>0.800</td>
+          <td>0.840</td>
+        </tr>
+        <tr>
+          <td>8</td>
+          <td><code>ai_vs_balanced</code></td>
+          <td style="color:#ea580c">0.333 ⚠</td>
+          <td>0.692</td>
+          <td style="color:#ea580c">0.500 ⚠</td>
+          <td>0.828</td>
+        </tr>
+      </table>
+      <div class="warn" style="margin-top:10px">
+        <span class="warn-icon">⚠️</span>
+        <span>CN=6, DP=8: thresholds <code>loh_vs_balanced</code> y <code>loh_vs_ai</code> = 1.00 → en Stage 3 toda esa CN cae en el brazo <code>outer_mass ≤ thr</code> (AI o Balanced). CN=8, DP=0 y DP=4: threshold ≤ 0.50, señal de n insuficiente.</span>
+      </div>
+    </div>
+
+    <div class="subsection">
+      <h3>Sobre el check de n_positions ≥ 5</h3>
+      <div class="info">
+        <strong>No hay descarte de segmentos por número de posiciones BAF.</strong>
+        El check <code>n_positions &gt;= 5</code> existe únicamente en <code>functions.py</code>
+        dentro de <code>calculate_enhanced_features_per_segment()</code>, y sólo condiciona el
+        cálculo de features estadísticas (skewness, kurtosis, bimodalidad): con &lt;5 posiciones
+        esas features se ponen a 0. No hay ninguna regla que descarte el segmento de la
+        clasificación CN.
+      </div>
+    </div>
+
+    <div class="subsection">
+      <h3>Post-merge de segmentos adyacentes</h3>
+      <ul>
+        <li>Función: <code>merge_adjacent_segments_by_allelic_state()</code></li>
+        <li>Criterio: dos segmentos se fusionan si están en el <strong>mismo cromosoma</strong>, tienen el mismo <strong>A_cn y B_cn</strong>, y la distancia entre ellos es <code>≤ MAX_GAP_BP_FOR_MERGE = 1 bp</code>.</li>
+        <li>En el segmento fusionado: <code>confidence = min</code>, <code>tier = worst_tier</code> (tier1 &lt; tier2 &lt; tier3 &lt; tier3_heuristic &lt; tier3_ai_default &lt; no_baf).</li>
+        <li>Se generan dos ficheros por muestra×DP: <code>_premerge_scarHRD_input.txt</code> y <code>_postmerge_scarHRD_input.txt</code>.</li>
+      </ul>
+    </div>
+
+    <div class="subsection">
+      <h3>Formato del fichero de input para scarHRD</h3>
+      <table>
+        <tr><th>Columna</th><th>Fuente</th></tr>
+        <tr><td><code>SampleID</code></td><td>Identificador de muestra + DP + merge_state</td></tr>
+        <tr><td><code>Chromosome</code></td><td>Número cromosómico (1–22, sin "chr")</td></tr>
+        <tr><td><code>Start_position / End_position</code></td><td>Coordenadas del segmento</td></tr>
+        <tr><td><code>total_cn</code></td><td>CN total redondeado</td></tr>
+        <tr><td><code>A_cn / B_cn</code></td><td>Alelo mayor / menor inferido</td></tr>
+        <tr><td><code>ploidy</code></td><td>Media de <code>totalCN</code> sobre los segmentos de la muestra</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- STAGE 4                                                         -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<section id="stage4">
+  <div class="section-header">
+    <span class="badge orange">STAGE 4</span>
+    <div>
+      <h2>scarHRD scoring</h2>
+      <span class="subtitle">run_scarHRD.R</span>
+    </div>
+  </div>
+  <div class="section-body">
+    <div class="grid2">
+      <div class="mini-card">
+        <h4>Parámetros de llamada</h4>
+        <ul>
+          <li>Función R: <code>scarHRD::scar_score()</code></li>
+          <li>Referencia genómica: <code>grch37</code></li>
+          <li>Modo: <code>seqz = FALSE</code> (input de copy-number directo, no Sequenza)</li>
+          <li>Directorio de trabajo: subdirectorio temporal por muestra (limpiado tras cada run)</li>
+        </ul>
+      </div>
+      <div class="mini-card">
+        <h4>Outputs</h4>
+        <ul>
+          <li><code>ALL_scarHRD_scores.csv</code>: una fila por muestra con las métricas HRD.</li>
+          <li>Métricas típicas de scarHRD: <code>HRD</code> (score total), <code>LST</code> (large-scale transitions), <code>LOH</code> (LoH score), <code>TAI</code> (telomeric allelic imbalance).</li>
+          <li><code>failed_samples.txt</code>: muestras que fallaron.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="info" style="margin-top:12px">
+      Se procesan <strong>todos</strong> los ficheros <code>*scarHRD_input*.txt</code> del directorio de input,
+      incluyendo todos los DP y estados pre/post-merge. El SampleID codifica dp y merge_state,
+      lo que permite distinguirlos en el CSV final.
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- QC REPORT                                                        -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<section id="qcreport">
+  <div class="section-header">
+    <span class="badge purple">QC REPORT</span>
+    <div>
+      <h2>QC report automático</h2>
+      <span class="subtitle">pipeline/qc_report.py · slurm/run_qc_report.sbatch</span>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <div class="subsection">
+      <h3>Descripción</h3>
+      <p>Script post-pipeline que genera un HTML autocontenido (<code>qc_report.html</code>) con los 5 plots embebidos en base64.
+      Se lanza automáticamente desde <code>orchestrate_pipeline.sh</code> al finalizar Stage 4 (<code>--dependency=afterok:$scarhrd_jid</code>).
+      También puede ejecutarse ad hoc sobre cualquier run ya procesado.</p>
+      <div class="info" style="margin-top:10px">
+        El script es independiente del pipeline principal — sólo lee CSVs y TXTs ya generados.
+        Un fallo en el QC report no afecta a los resultados del pipeline.
+      </div>
+    </div>
+
+    <div class="subsection">
+      <h3>Inputs requeridos</h3>
+      <table>
+        <tr><th>Fichero</th><th>Descripción</th></tr>
+        <tr><td><code>merged_segments_baf_metrics_ALL_with20bins_enhancedFeatures.csv</code></td><td>Output de Stage 2 — contiene <code>outer_mass_raw</code>, <code>n_positions</code>, <code>dp_filter</code>, <code>total_cn</code></td></tr>
+        <tr><td><code>scarHRD_inputs_thresholds/*_scarHRD_input.txt</code></td><td>Outputs de Stage 3 — contienen <code>A_cn</code>, <code>B_cn</code>, <code>total_cn</code>, coordenadas</td></tr>
+        <tr><td><code>thresholds_lookup.json</code></td><td>JSON de thresholds calibrados (nested: <code>{dp: {cn: {comp: thr}}}</code>)</td></tr>
+      </table>
+    </div>
+
+    <div class="subsection">
+      <h3>Plots generados</h3>
+      <table>
+        <tr><th>Plot</th><th>Qué muestra</th><th>Señal de alerta</th></tr>
+        <tr>
+          <td><strong>1. BAF coverage</strong></td>
+          <td>Distribución de <code>n_positions</code> por segmento y muestra (log scale), por DP</td>
+          <td>Muestras con muchos segmentos por debajo de la línea roja (<code>n=10</code>)</td>
+        </tr>
+        <tr>
+          <td><strong>2. outer_mass por CN</strong></td>
+          <td>Violines de <code>outer_mass_raw</code> por <code>total_cn</code> con líneas de threshold calibradas (azul=loh_vs_balanced, naranja=loh_vs_ai, verde=ai_vs_balanced), por DP</td>
+          <td>Distribuciones solapadas en torno al threshold → clasificación incierta para esa CN</td>
+        </tr>
+        <tr>
+          <td><strong>3. Heatmap de margen</strong></td>
+          <td>Mediana de <code>|outer_mass_raw − threshold|</code> por muestra × CN, por DP. Rojo = próximo al threshold (incierto), verde = lejos (claro). Números = n segmentos</td>
+          <td>Celdas rojas en CNs frecuentes o muestras con muchas celdas rojas</td>
+        </tr>
+        <tr>
+          <td><strong>4. Composición alélica</strong></td>
+          <td>Fracción de longitud genómica en cada estado (LoH / Balanced / AI / Deletion) por muestra (DP=8, premerge)</td>
+          <td>Muestras con fracción Deletion elevada (posible problema de segmentación o pureza muy baja)</td>
+        </tr>
+        <tr>
+          <td><strong>5. Pre vs post-merge</strong></td>
+          <td>Scatter n_segmentos premerge (x) vs postmerge (y) por muestra×DP. Etiqueta = ratio post/pre</td>
+          <td>Ratio &lt;0.5 → compresión muy agresiva; puntos en la diagonal → merge sin efecto</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="subsection">
+      <h3>Uso</h3>
+      <p><strong>Automático:</strong> encadenado por el orchestrator, no requiere acción.</p>
+      <p style="margin-top:8px"><strong>Ad hoc sobre un run existente:</strong></p>
+      <div class="formula">sbatch --export=ALL,CONFIG=configs/pipeline_config_YYYYMMDD.yaml \
+  slurm/run_qc_report.sbatch
+
+# O sin SLURM:
+conda run -n shapeit4 python pipeline/qc_report.py \
+  --config configs/pipeline_config_YYYYMMDD.yaml</div>
+      <p style="margin-top:8px">El HTML se escribe en <code>{base_dir}/qc_report.html</code> (~800 KB, autocontenido).</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- CONFIG                                                           -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<section id="config">
+  <div class="section-header">
+    <span class="badge gray">CONFIG</span>
+    <div>
+      <h2>Parámetros configurables</h2>
+      <span class="subtitle">pipeline_config_template.yaml / baf_to_hrd_pipeline.py defaults</span>
+    </div>
+  </div>
+  <div class="section-body">
+    <table>
+      <tr><th>Parámetro</th><th>Sección YAML</th><th>Default</th><th>Efecto</th></tr>
+      <tr><td><code>date</code></td><td>run</td><td>—</td><td>Etiqueta del run; subdirectorio de outputs</td></tr>
+      <tr><td><code>stages</code></td><td>run</td><td>1,2,3</td><td>Stages a ejecutar</td></tr>
+      <tr><td><code>folder_paths</code></td><td>input</td><td>ver config</td><td>Directorios con _qc.tsv o ASCAT files</td></tr>
+      <tr><td><code>raw_segments_dir</code></td><td>input</td><td>—</td><td>Directorio con CSVs de segmentos CN por muestra</td></tr>
+      <tr><td><code>thresholds_file</code></td><td>input</td><td>20260406/.../thresholds_lookup.json</td><td>JSON de thresholds calibrados</td></tr>
+      <tr><td><code>purity_file</code></td><td>input</td><td>null</td><td>TSV con columnas sample, purity, ploidy</td></tr>
+      <tr><td><code>ascat_segments_dir</code></td><td>input</td><td>null</td><td>Directorio adicional con segmentos ASCAT (nMajor/nMinor)</td></tr>
+      <tr><td><code>baf_suffixes</code></td><td>input</td><td>_qc.tsv, .tumour.tso500_sparse_downsample_corrected.txt.gz, .tumour.tso500_sparse_downsample.txt</td><td>Orden de prioridad al detectar ficheros BAF</td></tr>
+      <tr><td><code>types_of_files</code></td><td>input</td><td>["_qc.tsv"]</td><td>Etiqueta de paso de procesamiento en ficheros de output</td></tr>
+      <tr><td><code>dp_values</code></td><td>processing</td><td>[0, 2, 4, 8]</td><td>Valores de DP mínimo a aplicar</td></tr>
+      <tr><td><code>n_bins</code></td><td>processing</td><td>20</td><td>Número de bins BAF (debe coincidir entre calibración y aplicación)</td></tr>
+      <tr><td><code>max_gap_bp_for_merge</code></td><td>processing</td><td>1</td><td>Distancia máxima en bp para fusionar segmentos adyacentes en Stage 3</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- ISSUES                                                           -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<section id="issues">
+  <div class="section-header">
+    <span class="badge red">REVISIÓN</span>
+    <div>
+      <h2>Puntos críticos y posibles fuentes de error</h2>
+      <span class="subtitle">Motivados por la baja correlación HRD calculado vs gold-standard</span>
+    </div>
+  </div>
+  <div class="section-body">
+
+    <div class="issue-box">
+      <h4>1. LoH ausente para CN=6 y CN=8</h4>
+      <p>
+        Para CN=6, las únicas opciones son <strong>AI (4:2)</strong> o <strong>Balanced (3:3)</strong>.
+        Para CN=8 son <strong>AI (6:2)</strong> o <strong>Balanced (4:4)</strong>.
+        Si una muestra tiene CN=6 LoH (6:0) — posible en tumores muy amplificados con pérdida de un alelo —
+        se clasificará erróneamente como AI o Balanced.
+        Idem para CN=8 LoH (8:0).
+        <br><br>
+        La lógica en el código para CN=6 también parece invertida respecto a la intuición biológica:
+        <code>outer_mass &gt; threshold → 4:2 (AI)</code>, cuando mayor outer_mass debería indicar mayor imbalance
+        (normalmente LoH). Esto puede deberse a la distribución empírica de los datos de calibración para CN=6,
+        pero merece verificación.
+      </p>
+    </div>
+
+    <div class="issue-box">
+      <h4>2. CN=3 no considera Balanced (1.5:1.5 no entero)</h4>
+      <p>
+        Para CN=3, solo se considera LoH (3:0) o AI (2:1). Un segmento de CN=3 que en realidad es
+        AI con composición ambigua siempre irá a 2:1, lo cual puede ser correcto estadísticamente,
+        pero el threshold está calibrado como <code>loh_vs_ai</code> sin posibilidad de balanced.
+      </p>
+    </div>
+
+    <div class="issue-box">
+      <h4>3. Ploidy calculada como media(totalCN)</h4>
+      <p>
+        <code>ploidy = mean(totalCN)</code> no ponderado por la longitud de los segmentos.
+        Un segmento de 100 Mb con CN=4 y diez segmentos de 1 Mb con CN=2 darán una ploidy
+        ≈ 2.18, cuando la ploidy real debería ser ~3.8.
+        Esta estimación incorrecta de ploidy se pasa a scarHRD y puede afectar los scores.
+      </p>
+    </div>
+
+    <div class="issue-box">
+      <h4>4. Default "no BAF" siempre es Balanced o AI (nunca LoH)</h4>
+      <p>
+        Cuando un segmento no tiene ninguna posición BAF (<code>outer_mass_raw = NaN</code>),
+        el default es siempre el estado no-LoH:
+        CN=2 → 1:1, CN=3 → 2:1, CN=4 → 2:2, etc.
+        Esto introduce un sesgo <strong>anti-LoH</strong> en muestras con baja cobertura o segmentos sin SNPs en el panel.
+        Segmentos en cromosomas con poco contenido heterocigoto (ej. regiones pericéntricas) serán
+        sistemáticamente clasificados como balanceados.
+      </p>
+    </div>
+
+    <div class="issue-box">
+      <h4>5. Sin corrección de pureza en TSO500</h4>
+      <p>
+        Los thresholds se calibraron en muestras ASCAT-downsampled también sin corrección de pureza
+        (por consistencia), pero la pureza real afecta la distribución del BAF y por tanto del outer_mass.
+        Muestras con baja pureza tumoral tendrán outer_mass desplazado hacia el centro (más balanceado),
+        lo que puede hacer que LoH reales sean clasificados como AI o Balanced.
+        <br><strong>Acción sugerida:</strong> verificar si hay estimaciones de pureza disponibles de los análisis DRAGEN/TSO500.
+      </p>
+    </div>
+
+    <div class="issue-box">
+      <h4>6. Thresholds fijos para CN≥7 (heurísticos)</h4>
+      <p>
+        Para CN=7 y CN&gt;8 no hay calibración: se usa un threshold fijo de <strong>0.95</strong>.
+        Si estos valores de CN son frecuentes en las muestras analizadas, contribuirán ruido al HRD score.
+        Adicionalmente, para CN&gt;8 even el estado AI asignado es <code>(cn/2+1):(cn/2-1)</code>,
+        que puede no ser el más frecuente biológicamente.
+      </p>
+    </div>
+
+    <div class="issue-box">
+      <h4>7. Posible drift entre datos de calibración y aplicación</h4>
+      <p>
+        Los thresholds se calibraron con el run <code>20260406</code> (ASCAT-downsampled).
+        Si las muestras TSO500 actuales tienen una distribución de outer_mass diferente
+        (por batch effects de sequencing, panel distinto entre HRD y no-HRD, etc.),
+        los thresholds fijos pueden no ser óptimos.
+        <br><strong>Check sugerido:</strong> comparar histogramas de outer_mass por CN entre el set de calibración y las muestras TSO500.
+      </p>
+    </div>
+
+    <div class="issue-box">
+      <h4>8. scarHRD recibe segmentos pre- y post-merge en el mismo run</h4>
+      <p>
+        Actualmente se pasan tanto los ficheros <code>_premerge</code> como <code>_postmerge</code>
+        a <code>run_scarHRD.R</code>, que procesa todo el directorio.
+        Hay que asegurarse de que la comparación con el gold-standard usa consistentemente
+        el mismo tipo (premerge o postmerge) y el mismo DP filter.
+      </p>
+    </div>
+
+    <div class="ok-box">
+      <h4>✓ Aspectos bien diseñados</h4>
+      <ul>
+        <li><strong>Consistencia calibración/aplicación:</strong> ambas usan <code>outer_mass_raw</code> (sin corrección de pureza), evitando el desacuerdo de escala.</li>
+        <li><strong>Separación train/val:</strong> <code>split_samples.py</code> existe para un split honesto de calibración.</li>
+        <li><strong>Múltiples DP:</strong> el pipeline permite evaluar el efecto del filtro de profundidad.</li>
+        <li><strong>HRD suffix lookup:</strong> la lógica de strip del sufijo -HRD está correctamente implementada.</li>
+        <li><strong>Confidence y tier:</strong> cada segmento lleva información de cuánto se confía en la asignación, permitiendo filtrar segmentos problemáticos en análisis posteriores.</li>
+        <li><strong>Merge de segmentos adyacentes:</strong> reduce la fragmentación del segmentoma antes de pasarlo a scarHRD.</li>
+      </ul>
+    </div>
+
+    <div class="subsection" style="margin-top:20px">
+      <h3>Checklist de diagnóstico recomendado</h3>
+      <table>
+        <tr><th>#</th><th>Verificación</th><th>Datos necesarios</th></tr>
+        <tr>
+          <td>1</td>
+          <td>¿Cuál es la distribución de <code>outer_mass_raw</code> por CN en las muestras TSO500 vs las ASCAT de calibración?</td>
+          <td>merged CSV de ambos runs</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>¿Qué DP filter y merge_state maximiza la correlación con el gold-standard?</td>
+          <td>ALL_scarHRD_scores.csv + gold-standard HRD</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>¿Qué fracción de segmentos tiene <code>tier = no_baf</code>? ¿En qué cromosomas y rango de CN?</td>
+          <td>Ficheros *_premerge_scarHRD_input.txt con columna tier</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td>¿Los AUCs de calibración para CN=2,3,4 son realmente altos? ¿O hay separabilidad baja?</td>
+          <td>threshold_summary_all_dp.csv en outdir de calibración</td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td>¿La ploidy media difiere mucho de la ploidy ponderada por longitud de segmento?</td>
+          <td>Calcular en el merged CSV</td>
+        </tr>
+        <tr>
+          <td>6</td>
+          <td>¿Hay diferencias sistemáticas entre muestras -HRD y no-HRD en la distribución de outer_mass?</td>
+          <td>Separar por sufijo en el merged CSV</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer style="text-align:center;padding:24px;color:#94a3b8;font-size:0.8em;border-top:1px solid #e2e8f0;margin-top:10px">
+  Generado por Claude Code · 2026-05-12 · baf_hrd_pipeline master branch
+</footer>
+
+</body>
+</html>

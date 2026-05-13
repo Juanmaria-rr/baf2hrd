@@ -104,6 +104,9 @@ PIPELINE_SBATCH="${SCRIPT_DIR}/run_pipeline.sbatch"
 # scarHRD sbatch to submit once Stages 1-3 complete.
 SCARHRD_SBATCH="${SCRIPT_DIR}/run_scarHRD.sbatch"
 
+# QC report sbatch to submit once Stage 4 completes.
+QC_SBATCH="${SCRIPT_DIR}/run_qc_report.sbatch"
+
 # Maximum simultaneous Stage 0 array tasks (throttles mpileup memory)
 MAX_PARALLEL_MPILEUP=10
 
@@ -340,6 +343,13 @@ scarhrd_jid=$(sbatch --parsable \
     "$SCARHRD_SBATCH")
 
 echo "scarHRD job → $scarhrd_jid  (dep: $pipeline_jid)"
+
+qc_jid=$(sbatch --parsable \
+    --dependency=afterok:"$scarhrd_jid" \
+    --export=ALL,REPO_DIR="$REPO_DIR",CONFIG="$RUN_CONFIG" \
+    "$QC_SBATCH")
+
+echo "QC report  → $qc_jid  (dep: $scarhrd_jid)"
 echo ""
 echo "Monitor:  squeue -u \$USER"
 echo "Logs:     ${SCRIPT_DIR}/logs/"

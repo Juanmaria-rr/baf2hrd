@@ -94,8 +94,9 @@ fi
 # ============================================================
 # Ensure BAM index exists (required by bcftools mpileup -R)
 # ============================================================
-if [[ ! -f "${BAM}.bai" && ! -f "${BAM%.bam}.bai" ]]; then
-    echo "[INFO] No index found — running samtools index..."
+if [[ ! -s "${BAM}.bai" && ! -s "${BAM%.bam}.bai" ]]; then
+    [[ -f "${BAM}.bai" ]] && rm -f "${BAM}.bai"
+    echo "[INFO] No valid index found — running samtools index..."
     samtools index -@ "${SLURM_CPUS_PER_TASK}" "$BAM"
     echo "[INFO] Index created."
 fi

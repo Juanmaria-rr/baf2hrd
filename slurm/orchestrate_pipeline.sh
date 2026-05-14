@@ -217,9 +217,11 @@ echo "TSV_DIR:  $TSV_DIR"
 echo "============================================================"
 
 stage0_jids=()        # parse_mpileup job IDs (one per BAM-only sample)
+declare -A index_jid_for_bam  # BAM path → index_bam job ID (only when indexing needed)
 n_skip=0
 n_bam=0
 n_tsv_only=0
+n_index=0
 
 # Collect all BAM files (deduplicate per sample: prefer EXP08A over EXP08B)
 declare -A bam_for_sample
@@ -244,6 +246,45 @@ echo ""
 echo "Found ${#bam_for_sample[@]} unique sample(s) in BAM_DIR."
 echo ""
 
+# ============================================================
+# Pre-flight: BAI index validation
+# Submit index_bam jobs for any BAM whose .bai is missing or
+# empty (0 bytes — corrupt transfer stub).  Stage 0 mpileup
+# jobs for those samples depend on their index job.
+# ============================================================
+echo "------------------------------------------------------------"
+echo "Pre-flight: BAI validation"
+echo "------------------------------------------------------------"
+
+for sample in $(echo "${!bam_for_sample[@]}" | tr ' ' '\n' | sort); do
+    bam="${bam_for_sample[$sample]}"
+    bai="${bam}.bai"
+
+    if [[ -s "$bai" ]]; then
+        continue  # valid index
+    fi
+
+    if [[ ! -f "$bai" ]]; then
+        reason="missing"
+    else
+        reason="empty (0 bytes)"
+    fi
+
+    echo "  [INDEX]  $sample — BAI $reason"
+    jid_index=$(sbatch \
+        --parsable \
+        "${SCRIPT_DIR}/run_index_bam.sbatch" \
+        "$bam")
+    index_jid_for_bam["$bam"]="$jid_index"
+    echo "           index job  → $jid_index"
+    (( n_index++ )) || true
+done
+
+if [[ $n_index -eq 0 ]]; then
+    echo "  [OK] All BAI files valid — no indexing needed."
+fi
+echo ""
+
 for sample in $(echo "${!bam_for_sample[@]}" | tr ' ' '\n' | sort); do
     bam="${bam_for_sample[$sample]}"
 
@@ -258,14 +299,25 @@ for sample in $(echo "${!bam_for_sample[@]}" | tr ' ' '\n' | sort); do
     (( n_bam++ )) || true
 
     # ── Stage 0a: mpileup ──────────────────────────────────────────────────
+    # Add index dependency only for BAMs that needed (re-)indexing
+    mpileup_dep_flag=""
+    if [[ -n "${index_jid_for_bam[$bam]+_}" ]]; then
+        mpileup_dep_flag="--dependency=afterok:${index_jid_for_bam[$bam]}"
+    fi
+
     jid_mpileup=$(sbatch \
         --parsable \
+        $mpileup_dep_flag \
         --export=ALL,BAM_DIR="$BAM_DIR" \
         "${SCRIPT_DIR}/run_mpileup_single.sbatch" \
         "$sample" \
         "$TSV_DIR")
 
-    echo "           mpileup job → $jid_mpileup"
+    if [[ -n "$mpileup_dep_flag" ]]; then
+        echo "           mpileup job → $jid_mpileup  (dep: ${index_jid_for_bam[$bam]})"
+    else
+        echo "           mpileup job → $jid_mpileup"
+    fi
 
     # ── Stage 0b: parse mpileup → _qc.tsv ─────────────────────────────────
     jid_parse=$(sbatch \
@@ -285,6 +337,7 @@ done
 # ============================================================
 echo ""
 echo "------------------------------------------------------------"
+echo "BAI index jobs         : $n_index"
 echo "Stage 0 jobs submitted : $n_bam"
 echo "Samples skipped (TSV)  : $n_skip"
 echo "------------------------------------------------------------"

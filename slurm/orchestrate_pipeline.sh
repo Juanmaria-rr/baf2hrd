@@ -72,6 +72,9 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Repo root (needed by Stage 0 sbatch exports — must be set before the submission loop)
+REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
 # Python interpreter with pandas available
 PYTHON="conda run -n shapeit4 python"
 
@@ -290,7 +293,6 @@ echo "------------------------------------------------------------"
 # Generate run config
 # ============================================================
 RUN_DATE="$(date +%Y%m%d)"
-REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TSO_SAMPLES_ROOT="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples"
 RUN_CONFIG="${REPO_DIR}/configs/pipeline_config_${RUN_DATE}.yaml"
 

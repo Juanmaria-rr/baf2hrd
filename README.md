@@ -26,11 +26,15 @@ BAM files
 pipeline/     Python source (main pipeline + utilities)
   split_segments.py        ← pre-processing: combined segtable → per-sample CSVs
   qc_report.py             ← post-pipeline QC report (HTML autocontenido)
+  log_processed_samples.py ← genera PROCESSED_SAMPLES.tsv con trazabilidad de runs
 slurm/        SLURM submission scripts
   orchestrate_pipeline.sh  ← entry point; encadena Stage 0 → 4 → QC report
+  run_index_bam.sbatch     ← indexado de BAM (lanzado automáticamente si .bai ausente/vacío)
   run_qc_report.sbatch     ← lanzamiento ad hoc del QC report
 configs/      Per-run YAML configuration (auto-generated per run)
+  run_info_YYYYMMDD.json   ← trazabilidad: git_commit + config_file por run (auto-generated)
 autoresearch/ Autonomous loop for improving Stage 3 classification
+PROCESSED_SAMPLES.tsv      ← log de muestras procesadas (generado por log_processed_samples.py)
 ```
 
 ## Usage
@@ -46,10 +50,12 @@ bash slurm/orchestrate_pipeline.sh \
 The orchestrator will:
 1. Run `split_segments.py` to generate per-sample segment CSVs from the combined segtable
 2. Auto-generate `configs/pipeline_config_YYYYMMDD.yaml` with the correct paths
-3. Submit Stage 0 (mpileup → `_qc.tsv`) per sample via SLURM
-4. Submit Stages 1–3 as a dependent job once all Stage 0 jobs complete
-5. Submit Stage 4 (scarHRD) dependent on Stages 1–3
-6. Submit the QC report dependent on Stage 4 → `{base_dir}/qc_report.html`
+3. Write `configs/run_info_YYYYMMDD.json` (git commit hash + config path) for traceability
+4. **Pre-flight**: validate `.bai` index for every BAM — if absent or empty (corrupt transfer stub), submit a `run_index_bam.sbatch` job and chain the mpileup after it
+5. Submit Stage 0 (mpileup → `_qc.tsv`) per sample via SLURM; samples that already have a `_qc.tsv` are skipped automatically
+6. Submit Stages 1–3 as a dependent job once all Stage 0 jobs complete
+7. Submit Stage 4 (scarHRD) dependent on Stages 1–3
+8. Submit the QC report dependent on Stage 4 → `{base_dir}/qc_report.html`
 
 If `--bam-dir` / `--tsv-dir` are omitted, defaults to the original `rg_bam` and
 `20260225_GoldStandard_mpileup_stats_q30/results` directories.
@@ -105,6 +111,22 @@ El HTML resultante se escribe en `{base_dir}/qc_report.html` e incluye:
 | Heatmap de margen | Qué segmentos caen cerca del límite de clasificación (inciertos) |
 | Composición alélica | Fracción LoH / Balanced / AI / Deletion por muestra (DP=8) |
 | Pre/post-merge | Compresión de segmentos tras el merge por adyacencia |
+
+### Processing log
+
+`PROCESSED_SAMPLES.tsv` in the repo root tracks every sample processed since
+2026-05-11 (first production run). Columns: `run_date`, `sample_id`,
+`git_commit`, `config_file`, `output_dir`, `dp_used`, `hrd`, `tai`, `lst`,
+`hrd_sum`. Score is dp4 postmerge (fallback dp2/dp0/dp8).
+
+Regenerate at any time:
+
+```bash
+conda run -n shapeit4 python pipeline/log_processed_samples.py
+```
+
+Git commit is read from `configs/run_info_YYYYMMDD.json` (written automatically
+by the orchestrator) or reconstructed from `git log` for retroactive runs.
 
 ### Manual invocation (single stage or debugging)
 

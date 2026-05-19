@@ -110,6 +110,9 @@ SCARHRD_SBATCH="${SCRIPT_DIR}/run_scarHRD.sbatch"
 # QC report sbatch to submit once Stage 4 completes.
 QC_SBATCH="${SCRIPT_DIR}/run_qc_report.sbatch"
 
+# HRD performance report sbatch to submit once Stage 4 completes.
+EVAL_HRD_SBATCH="${SCRIPT_DIR}/run_eval_hrd.sbatch"
+
 # Maximum simultaneous Stage 0 array tasks (throttles mpileup memory)
 MAX_PARALLEL_MPILEUP=10
 
@@ -363,6 +366,15 @@ else
     echo "[INFO] Re-using existing run config: $RUN_CONFIG"
 fi
 
+# Write run_info.json for pipeline traceability (read by log_processed_samples.py)
+RUN_INFO="${REPO_DIR}/configs/run_info_${RUN_DATE}.json"
+if [[ ! -f "$RUN_INFO" ]]; then
+    GIT_COMMIT="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || echo 'unknown')"
+    printf '{\n  "run_date": "%s",\n  "git_commit": "%s",\n  "config_file": "%s"\n}\n' \
+        "$RUN_DATE" "$GIT_COMMIT" "$RUN_CONFIG" > "$RUN_INFO"
+    echo "[INFO] Written run_info: $RUN_INFO"
+fi
+
 # ============================================================
 # Submit pipeline (Stage 1+)
 # ============================================================
@@ -405,6 +417,13 @@ qc_jid=$(sbatch --parsable \
     "$QC_SBATCH")
 
 echo "QC report  → $qc_jid  (dep: $scarhrd_jid)"
+
+eval_jid=$(sbatch --parsable \
+    --dependency=afterok:"$scarhrd_jid" \
+    --export=ALL,REPO_DIR="$REPO_DIR",CURRENT_RUN="$RUN_DATE" \
+    "$EVAL_HRD_SBATCH")
+
+echo "HRD eval   → $eval_jid  (dep: $scarhrd_jid)"
 echo ""
 echo "Monitor:  squeue -u \$USER"
 echo "Logs:     ${SCRIPT_DIR}/logs/"

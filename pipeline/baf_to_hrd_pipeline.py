@@ -392,6 +392,11 @@ def load_purity_mappings(purity_file):
             short_name = long_name.split("_vs_")[0]
             purity_mapping[short_name] = values["purity"]
             ploidy_mapping[short_name] = values["ploidy"]
+            # HRD variants share the same tumor — register both forms
+            purity_mapping[long_name  + "-HRD"] = values["purity"]
+            ploidy_mapping[long_name  + "-HRD"] = values["ploidy"]
+            purity_mapping[short_name + "-HRD"] = values["purity"]
+            ploidy_mapping[short_name + "-HRD"] = values["ploidy"]
 
         print(f"✓ Loaded purity for {len(purity_mapping)} entries (including short name variants)")
     except Exception as e:

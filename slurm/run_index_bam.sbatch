@@ -21,8 +21,6 @@
 
 set -euo pipefail
 
-export PATH="/home/jmroldan/miniconda3/envs/shapeit4/bin:$PATH"
-
 BAM="${1:?Usage: sbatch run_index_bam.sbatch BAM}"
 BAI="${BAM}.bai"
 
@@ -35,7 +33,7 @@ echo "BAM:     $BAM"
 echo "BAI:     $BAI"
 echo "============================================================"
 
-samtools --version | head -n 1
+conda run -n shapeit4 samtools --version | head -n 1
 
 [[ -f "$BAM" ]] || { echo "[ERROR] BAM not found: $BAM"; exit 1; }
 
@@ -46,7 +44,7 @@ if [[ -f "$BAI" && ! -s "$BAI" ]]; then
 fi
 
 echo "[INFO] Running samtools index (-@ ${SLURM_CPUS_PER_TASK})..."
-samtools index -@ "${SLURM_CPUS_PER_TASK}" "$BAM"
+conda run -n shapeit4 samtools index -@ "${SLURM_CPUS_PER_TASK}" "$BAM"
 
 echo "[INFO] Index written: $BAI  ($(du -h "$BAI" | cut -f1))"
 echo "[INFO] Done at $(date)"

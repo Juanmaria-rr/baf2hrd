@@ -12,13 +12,26 @@ Run manually at any time:
     conda run -n shapeit4 python pipeline/log_processed_samples.py
 """
 
+import argparse
 import csv
 import json
 import subprocess
 from pathlib import Path
 
 PIPELINE_REPO = Path(__file__).resolve().parent.parent
-TSO_SAMPLES_ROOT = Path("/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples")
+
+def _parse_args():
+    p = argparse.ArgumentParser(description="Generate PROCESSED_SAMPLES.tsv from pipeline run dirs.")
+    p.add_argument(
+        "--tso-root",
+        type=Path,
+        default=PIPELINE_REPO.parent / "tso_samples",
+        help="Root directory containing all pipeline run subdirectories (default: ../tso_samples relative to repo root)",
+    )
+    return p.parse_args()
+
+_ARGS = _parse_args()
+TSO_SAMPLES_ROOT = _ARGS.tso_root
 OUTPUT_TSV = PIPELINE_REPO / "PROCESSED_SAMPLES.tsv"
 MIN_RUN_DATE = "20260511"
 DP_PRIORITY = [4, 2, 0, 8]

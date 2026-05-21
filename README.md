@@ -112,6 +112,28 @@ El HTML resultante se escribe en `{base_dir}/qc_report.html` e incluye:
 | Composición alélica | Fracción LoH / Balanced / AI / Deletion por muestra (DP=8) |
 | Pre/post-merge | Compresión de segmentos tras el merge por adyacencia |
 
+### Purity correction
+
+When a `purity_file` is provided in the config (tab-separated, columns:
+`sample`, `purity`, `ploidy`), the pipeline applies per-sample BAF correction
+in Stage 1 before computing segment-level metrics:
+
+```
+BAF_corrected = 0.5 ± (BAF_raw - 0.5) / purity
+```
+
+Both the raw and corrected BAF values are retained in outputs (`BAF_raw`,
+`BAF_corrected`, `purity_used`). Samples without a purity entry proceed
+without correction. The `-HRD` BAM variant is automatically mapped to the
+same purity as the base sample.
+
+Set `purity_file` in the run config:
+
+```yaml
+input:
+  purity_file: "/path/to/purity_ploidy.tsv"  # columns: sample, purity, ploidy
+```
+
 ### Processing log
 
 `PROCESSED_SAMPLES.tsv` in the repo root tracks every sample processed since
@@ -122,8 +144,10 @@ El HTML resultante se escribe en `{base_dir}/qc_report.html` e incluye:
 Regenerate at any time:
 
 ```bash
-conda run -n shapeit4 python pipeline/log_processed_samples.py
+conda run -n shapeit4 python pipeline/log_processed_samples.py [--tso-root /path/to/tso_samples]
 ```
+
+`--tso-root` defaults to `../tso_samples` relative to the repo root.
 
 Git commit is read from `configs/run_info_YYYYMMDD.json` (written automatically
 by the orchestrator) or reconstructed from `git log` for retroactive runs.

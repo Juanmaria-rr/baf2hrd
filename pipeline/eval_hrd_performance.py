@@ -43,14 +43,20 @@ def parse_args():
 # ---------------------------------------------------------------------------
 
 def discover_runs(root, min_run="20260511"):
-    pattern = os.path.join(root, "20??????", "outputs_scarHRD", "ALL_scarHRD_scores.csv")
-    files = sorted(glob.glob(pattern))
-    runs = {}
-    for f in files:
+    base_runs, purity_runs = {}, {}
+
+    for f in sorted(glob.glob(os.path.join(root, "20??????", "outputs_scarHRD", "ALL_scarHRD_scores.csv"))):
         run_date = os.path.basename(os.path.dirname(os.path.dirname(f)))
         if run_date >= min_run:
-            runs[run_date] = f
-    return runs
+            base_runs[run_date] = f
+
+    for f in sorted(glob.glob(os.path.join(root, "20??????_purity", "outputs_scarHRD", "ALL_scarHRD_scores.csv"))):
+        dir_name  = os.path.basename(os.path.dirname(os.path.dirname(f)))
+        date_part = dir_name.replace('_purity', '')
+        if date_part >= min_run:
+            purity_runs[dir_name] = f
+
+    return base_runs, purity_runs
 
 
 def load_scores(run_files):
@@ -447,6 +453,41 @@ def render_html(sections, generated_at):
 # Main
 # ---------------------------------------------------------------------------
 
+def _build_analysis_sections(merged, run_files, section_id, section_label, current_run):
+    sections = []
+
+    # ── Combined ──────────────────────────────────────────────────────────
+    long_all = build_long(merged)
+    sections.append(f'<section id="{section_id}-combined"><h2>{section_label} — combined</h2>')
+    for hrd_grp, grp in long_all.groupby('HRD_panel'):
+        b64 = make_scatter_figure(grp, f"Scatter — {hrd_grp} (all runs)")
+        sections.append(f'<h3>{hrd_grp}</h3>' + img_tag(b64))
+    for hrd_grp, grp in merged.groupby('HRD_panel'):
+        b64 = make_confusion_figure(grp, f"Confusion — {hrd_grp} (all runs)")
+        sections.append(f'<h3>Confusion matrix — {hrd_grp}</h3>' + img_tag(b64))
+    sections.append('</section>')
+
+    # ── Per-run ───────────────────────────────────────────────────────────
+    sections.append(f'<section id="{section_id}-per-run"><h2>{section_label} — per run</h2>')
+    for run_date in sorted(run_files.keys()):
+        highlight = ' ★ current' if run_date == current_run else ''
+        sections.append(f'<h3>Run {run_date}{highlight}</h3>')
+        run_merged = merged[merged['run_date'] == run_date]
+        if run_merged.empty:
+            sections.append('<p><em>No GIS matches for this run.</em></p>')
+            continue
+        long_run = build_long(run_merged)
+        for hrd_grp, grp in long_run.groupby('HRD_panel'):
+            b64 = make_scatter_figure(grp, f"Scatter — {hrd_grp} | run {run_date}")
+            sections.append(f'<h4>{hrd_grp}</h4>' + img_tag(b64))
+        for hrd_grp, grp in run_merged.groupby('HRD_panel'):
+            b64 = make_confusion_figure(grp, f"Confusion — {hrd_grp} | run {run_date}")
+            sections.append(f'<h4>Confusion — {hrd_grp}</h4>' + img_tag(b64))
+    sections.append('</section>')
+
+    return sections
+
+
 def main():
     args = parse_args()
 
@@ -454,16 +495,18 @@ def main():
                                            'hrd_performance_report.html')
 
     # ── Load data ─────────────────────────────────────────────────────────
-    run_files = discover_runs(args.tso_samples_root, min_run=args.min_run)
-    if not run_files:
+    base_runs, purity_runs = discover_runs(args.tso_samples_root, min_run=args.min_run)
+    if not base_runs:
         sys.exit(f"No runs found under {args.tso_samples_root} (min_run={args.min_run})")
 
     print(f"Min run filter  : {args.min_run}")
-    print(f"Runs found      : {sorted(run_files.keys())}")
+    print(f"Base runs found : {sorted(base_runs.keys())}")
+    print(f"Purity runs     : {sorted(purity_runs.keys())}")
     if args.exclude_samples:
         print(f"Excluded samples: {sorted(args.exclude_samples)}")
 
-    raw = load_scores(run_files)
+    all_runs = {**base_runs, **purity_runs}
+    raw = load_scores(all_runs)
     df  = parse_sample_ids(raw)
     if args.exclude_samples:
         before = len(df)
@@ -471,50 +514,33 @@ def main():
         print(f"Rows after exclusion: {len(df):,} (removed {before - len(df):,})")
     gis = load_gis(args.gis_scores)
 
-    # ── Parsing audit ─────────────────────────────────────────────────────
-    audit = build_parsing_audit(df, gis)
+    # ── Parsing audit (all runs) ──────────────────────────────────────────
+    audit     = build_parsing_audit(df, gis)
     audit_html = parsing_audit_html(audit, gis)
 
     # ── Merge with GIS ────────────────────────────────────────────────────
     merged = df.merge(gis, left_on='sample_name', right_on='gs_sample_name', how='inner')
-    merged = merged.drop_duplicates(subset=['sample_name_hrd', 'dp_filter', 'merge_stage'])
+    merged = merged.drop_duplicates(subset=['sample_name_hrd', 'dp_filter', 'merge_stage', 'run_date'])
+
+    merged_base   = merged[merged['run_date'].isin(base_runs)]
+    merged_purity = merged[merged['run_date'].isin(purity_runs)]
 
     sections = [audit_html]
 
-    # ── Combined analysis (all runs) ─────────────────────────────────────
-    long_all = build_long(merged)
+    # ── Base runs ─────────────────────────────────────────────────────────
+    sections += _build_analysis_sections(
+        merged_base, base_runs,
+        section_id='base', section_label='Base runs',
+        current_run=args.current_run,
+    )
 
-    sections.append('<section id="combined"><h2>Combined — all runs</h2>')
-    for hrd_grp, grp in long_all.groupby('HRD_panel'):
-        b64 = make_scatter_figure(grp, f"Scatter — {hrd_grp} (all runs)")
-        sections.append(f'<h3>{hrd_grp}</h3>' + img_tag(b64))
-
-    for hrd_grp, grp in merged.groupby('HRD_panel'):
-        b64 = make_confusion_figure(grp, f"Confusion — {hrd_grp} (all runs)")
-        sections.append(f'<h3>Confusion matrix — {hrd_grp}</h3>' + img_tag(b64))
-    sections.append('</section>')
-
-    # ── Per-run analysis ──────────────────────────────────────────────────
-    sections.append('<section id="per-run"><h2>Per run</h2>')
-    for run_date in sorted(run_files.keys()):
-        highlight = ' ★ current' if run_date == args.current_run else ''
-        sections.append(f'<h3>Run {run_date}{highlight}</h3>')
-
-        run_merged = merged[merged['run_date'] == run_date]
-        if run_merged.empty:
-            sections.append('<p><em>No GIS matches for this run.</em></p>')
-            continue
-
-        long_run = build_long(run_merged)
-        for hrd_grp, grp in long_run.groupby('HRD_panel'):
-            b64 = make_scatter_figure(grp, f"Scatter — {hrd_grp} | run {run_date}")
-            sections.append(f'<h4>{hrd_grp}</h4>' + img_tag(b64))
-
-        for hrd_grp, grp in run_merged.groupby('HRD_panel'):
-            b64 = make_confusion_figure(grp, f"Confusion — {hrd_grp} | run {run_date}")
-            sections.append(f'<h4>Confusion — {hrd_grp}</h4>' + img_tag(b64))
-
-    sections.append('</section>')
+    # ── Purity-corrected runs ─────────────────────────────────────────────
+    if purity_runs and not merged_purity.empty:
+        sections += _build_analysis_sections(
+            merged_purity, purity_runs,
+            section_id='purity', section_label='Purity-corrected runs',
+            current_run=args.current_run + '_purity' if args.current_run else None,
+        )
 
     # ── Write HTML ────────────────────────────────────────────────────────
     html = render_html(sections, datetime.now().strftime('%Y-%m-%d %H:%M'))

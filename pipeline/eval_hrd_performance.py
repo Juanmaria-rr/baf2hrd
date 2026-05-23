@@ -363,7 +363,10 @@ def make_confusion_figure(df, title):
             spec  = tn / (tn + fp) if (tn + fp) > 0 else float('nan')
             kappa = cohen_kappa_score(y_true, y_pred)
 
-            sns.heatmap(cm, annot=True, fmt='d', cmap='RdYlGn',
+            # Color by correctness (diagonal=1, off-diagonal=0), annotate with counts
+            correct_mask = np.eye(cm.shape[0], dtype=float)
+            sns.heatmap(correct_mask, annot=cm, fmt='d', cmap='RdYlGn',
+                        vmin=0, vmax=1,
                         xticklabels=['neg', 'pos'],
                         yticklabels=['neg', 'pos'],
                         linewidths=0.5, ax=ax, cbar=False,

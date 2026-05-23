@@ -31,6 +31,10 @@ def parse_args():
                    help="YYYYMMDD of the run to highlight in per-run plots")
     p.add_argument("--output", default=None,
                    help="Output HTML path (default: <tso-samples-root>/hrd_performance_report.html)")
+    p.add_argument("--min-run", default="20260511",
+                   help="Exclude runs earlier than this date (YYYYMMDD, default: 20260511)")
+    p.add_argument("--exclude-samples", nargs="*", default=[],
+                   help="Sample base IDs to exclude from analysis (e.g. JBLAB17037 JBLAB296)")
     return p.parse_args()
 
 
@@ -38,13 +42,14 @@ def parse_args():
 # Data loading
 # ---------------------------------------------------------------------------
 
-def discover_runs(root):
+def discover_runs(root, min_run="20260511"):
     pattern = os.path.join(root, "20??????", "outputs_scarHRD", "ALL_scarHRD_scores.csv")
     files = sorted(glob.glob(pattern))
     runs = {}
     for f in files:
         run_date = os.path.basename(os.path.dirname(os.path.dirname(f)))
-        runs[run_date] = f
+        if run_date >= min_run:
+            runs[run_date] = f
     return runs
 
 
@@ -246,6 +251,14 @@ def make_scatter_figure(data, title):
     n_rows = len(dp_values) * len(stages)
     n_cols = len(metric_order)
 
+    if n_rows == 0 or n_cols == 0:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 2))
+        ax.text(0.5, 0.5, 'No data (dp_filter / merge_stage not parsed)',
+                ha='center', va='center', transform=ax.transAxes, fontsize=10)
+        ax.axis('off')
+        fig.suptitle(title, fontsize=TITLE_SIZE)
+        return _fig_to_b64(fig)
+
     fig, axes = plt.subplots(n_rows, n_cols,
                              figsize=(4 * n_cols, 3.5 * n_rows),
                              squeeze=False)
@@ -316,6 +329,14 @@ def make_confusion_figure(df, title):
     n_cols = len(dp_values)
     n_rows = len(stages)
 
+    if n_rows == 0 or n_cols == 0:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 2))
+        ax.text(0.5, 0.5, 'No data (dp_filter / merge_stage not parsed)',
+                ha='center', va='center', transform=ax.transAxes, fontsize=10)
+        ax.axis('off')
+        fig.suptitle(title, fontsize=TITLE_SIZE)
+        return _fig_to_b64(fig)
+
     fig, axes = plt.subplots(n_rows, n_cols,
                              figsize=(4 * n_cols, 4 * n_rows),
                              squeeze=False)
@@ -324,7 +345,7 @@ def make_confusion_figure(df, title):
         for ci, dp in enumerate(dp_values):
             ax = axes[ri][ci]
             sub = df[
-                (df['dp_filter'].astype(int) == dp) &
+                (df['dp_filter'] == dp) &
                 (df['merge_stage'] == stage)
             ].drop_duplicates(subset=['sample_name_hrd'])
 
@@ -430,14 +451,21 @@ def main():
                                            'hrd_performance_report.html')
 
     # ── Load data ─────────────────────────────────────────────────────────
-    run_files = discover_runs(args.tso_samples_root)
+    run_files = discover_runs(args.tso_samples_root, min_run=args.min_run)
     if not run_files:
-        sys.exit(f"No runs found under {args.tso_samples_root}")
+        sys.exit(f"No runs found under {args.tso_samples_root} (min_run={args.min_run})")
 
-    print(f"Runs found: {sorted(run_files.keys())}")
+    print(f"Min run filter  : {args.min_run}")
+    print(f"Runs found      : {sorted(run_files.keys())}")
+    if args.exclude_samples:
+        print(f"Excluded samples: {sorted(args.exclude_samples)}")
 
     raw = load_scores(run_files)
     df  = parse_sample_ids(raw)
+    if args.exclude_samples:
+        before = len(df)
+        df = df[~df['sample_name'].isin(args.exclude_samples)]
+        print(f"Rows after exclusion: {len(df):,} (removed {before - len(df):,})")
     gis = load_gis(args.gis_scores)
 
     # ── Parsing audit ─────────────────────────────────────────────────────

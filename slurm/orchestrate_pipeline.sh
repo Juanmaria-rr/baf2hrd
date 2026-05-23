@@ -18,20 +18,25 @@
 #   bash orchestrate_pipeline.sh [OPTIONS]
 #
 # Options:
-#   --bam-dir DIR       Directory with *.bam files (default: tso_samples/rg_bam)
-#   --tsv-dir DIR       Directory where _qc.tsv files are/will be written
-#                       (default: 20260225_GoldStandard_mpileup_stats_q30/results)
-#   --segments-dir DIR  Pre-existing per-sample segments directory; skips
-#                       split_segments.py output writes (reuse a prior run's dir)
+#   --bam-dir DIR            Directory with *.bam files (default: tso_samples/rg_bam)
+#   --tsv-dir DIR            Directory where _qc.tsv files are/will be written
+#   --segments-dir DIR       Pre-existing per-sample segments directory (reuse a prior run's dir)
+#   --purity-file FILE       Purity/ploidy TSV (columns: sample, purity, ploidy).
+#                            When provided, a purity-corrected run is submitted IN PARALLEL
+#                            with the base run (same Stage 0 dependency), outputting to
+#                            tso_samples/YYYYMMDD_purity/. Uses purity-calibrated thresholds.
+#   --purity-thresholds FILE Override default purity-calibrated thresholds JSON.
+#                            Default: tso_samples/20260406_purity/thresholds_analysis_purity/thresholds_lookup.json
 #
 # Examples:
 #   # Default (existing samples)
 #   bash orchestrate_pipeline.sh
 #
-#   # New batch
+#   # New batch with purity correction
 #   bash orchestrate_pipeline.sh \
-#     --bam-dir /storage/.../tso_samples/rg_bam_20260505_batch01 \
-#     --tsv-dir /storage/.../tso_samples/20260505_batch01_mpileup/results
+#     --bam-dir /storage/.../tso_samples/all_bam_tso \
+#     --tsv-dir /storage/.../tso_samples/YYYYMMDD_mpileup_results \
+#     --purity-file /storage/.../tso_samples/purity_ploidy_pipeline.tsv
 #
 # Inspect submitted jobs:
 #   squeue -u $USER
@@ -56,6 +61,13 @@ TSV_DIR="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/202602
 # Pass --segments-dir to reuse an existing one (skips split_segments.py writes).
 SEGMENTS_DIR=""
 
+# Purity correction: if PURITY_FILE is set, a second pipeline run is submitted in
+# parallel using purity-corrected BAF and purity-calibrated thresholds.
+# Outputs go to tso_samples/YYYYMMDD_purity/ alongside the base run.
+PURITY_FILE=""
+TSO_SAMPLES_ROOT_DEFAULT="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples"
+PURITY_THRESHOLDS="${TSO_SAMPLES_ROOT_DEFAULT}/20260406_purity/thresholds_analysis_purity/thresholds_lookup.json"
+
 # Combined TSO500 segment file — all samples in one CSV.
 # split_segments.py reads this and writes one CSV per sample to SEGMENTS_DIR.
 COMBINED_SEGMENTS="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/unique_copyright_100kb_abs_segtable_free_purity_filtered_unique.csv"
@@ -65,9 +77,11 @@ COMBINED_SEGMENTS="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samp
 # ============================================================
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --bam-dir)      BAM_DIR="$2";      shift 2 ;;
-        --tsv-dir)      TSV_DIR="$2";      shift 2 ;;
-        --segments-dir) SEGMENTS_DIR="$2"; shift 2 ;;
+        --bam-dir)           BAM_DIR="$2";           shift 2 ;;
+        --tsv-dir)           TSV_DIR="$2";           shift 2 ;;
+        --segments-dir)      SEGMENTS_DIR="$2";      shift 2 ;;
+        --purity-file)       PURITY_FILE="$2";       shift 2 ;;
+        --purity-thresholds) PURITY_THRESHOLDS="$2"; shift 2 ;;
         *) echo "[ERROR] Unknown argument: $1"; exit 1 ;;
     esac
 done
@@ -349,7 +363,7 @@ echo "------------------------------------------------------------"
 # Generate run config
 # ============================================================
 RUN_DATE="$(date +%Y%m%d)"
-TSO_SAMPLES_ROOT="/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples"
+TSO_SAMPLES_ROOT="${TSO_SAMPLES_ROOT_DEFAULT}"
 RUN_CONFIG="${REPO_DIR}/configs/pipeline_config_${RUN_DATE}.yaml"
 
 # Only write if it does not already exist (idempotent re-runs same day)
@@ -393,14 +407,51 @@ if [[ ${#stage0_jids[@]} -gt 0 ]]; then
 else
     echo ""
     echo "All samples already have TSVs — submitting pipeline immediately."
+    dep_str=""
     pipeline_jid=$(sbatch --parsable \
         --export=ALL,REPO_DIR="$REPO_DIR",PIPELINE_CONFIG="$RUN_CONFIG" "$PIPELINE_SBATCH")
 fi
 
-echo "Pipeline job → $pipeline_jid"
+echo "Pipeline job (base) → $pipeline_jid"
 
 # ============================================================
-# Submit scarHRD (Stage 4) dependent on pipeline completion
+# Purity-corrected run (parallel to base when --purity-file set)
+# ============================================================
+purity_scarhrd_jid=""
+
+if [[ -n "$PURITY_FILE" ]]; then
+    PURITY_CONFIG="${REPO_DIR}/configs/pipeline_config_${RUN_DATE}_purity.yaml"
+    PURITY_BASE_DIR="${TSO_SAMPLES_ROOT}/${RUN_DATE}_purity"
+
+    if [[ ! -f "$PURITY_CONFIG" ]]; then
+        sed \
+            -e "s|base_dir: null|base_dir: \"${PURITY_BASE_DIR}\"|" \
+            -e "s|purity_file: null.*|purity_file: \"${PURITY_FILE}\"|" \
+            -e "s|thresholds_file:.*thresholds_lookup\.json.*|thresholds_file: \"${PURITY_THRESHOLDS}\"|" \
+            "$RUN_CONFIG" > "$PURITY_CONFIG"
+        echo "[INFO] Generated purity config: $PURITY_CONFIG"
+    else
+        echo "[INFO] Re-using existing purity config: $PURITY_CONFIG"
+    fi
+
+    if [[ -n "$dep_str" ]]; then
+        purity_pipeline_jid=$(sbatch --parsable --dependency="$dep_str" \
+            --export=ALL,REPO_DIR="$REPO_DIR",PIPELINE_CONFIG="$PURITY_CONFIG" "$PIPELINE_SBATCH")
+    else
+        purity_pipeline_jid=$(sbatch --parsable \
+            --export=ALL,REPO_DIR="$REPO_DIR",PIPELINE_CONFIG="$PURITY_CONFIG" "$PIPELINE_SBATCH")
+    fi
+    echo "Pipeline job (purity) → $purity_pipeline_jid  [parallel, dep: ${dep_str:-none}]"
+
+    purity_scarhrd_jid=$(sbatch --parsable \
+        --dependency=afterok:"$purity_pipeline_jid" \
+        --export=ALL,REPO_DIR="$REPO_DIR",BASE_DIR="$PURITY_BASE_DIR" \
+        "$SCARHRD_SBATCH")
+    echo "scarHRD job  (purity) → $purity_scarhrd_jid  (dep: $purity_pipeline_jid)"
+fi
+
+# ============================================================
+# Submit scarHRD (Stage 4) dependent on base pipeline completion
 # ============================================================
 BASE_DIR="${TSO_SAMPLES_ROOT}/${RUN_DATE}"
 
@@ -409,21 +460,28 @@ scarhrd_jid=$(sbatch --parsable \
     --export=ALL,REPO_DIR="$REPO_DIR",BASE_DIR="$BASE_DIR" \
     "$SCARHRD_SBATCH")
 
-echo "scarHRD job → $scarhrd_jid  (dep: $pipeline_jid)"
+echo "scarHRD job  (base)   → $scarhrd_jid  (dep: $pipeline_jid)"
 
 qc_jid=$(sbatch --parsable \
     --dependency=afterok:"$scarhrd_jid" \
     --export=ALL,REPO_DIR="$REPO_DIR",CONFIG="$RUN_CONFIG" \
     "$QC_SBATCH")
 
-echo "QC report  → $qc_jid  (dep: $scarhrd_jid)"
+echo "QC report             → $qc_jid  (dep: $scarhrd_jid)"
+
+# eval_hrd waits for both scarHRD jobs (base + purity if applicable)
+if [[ -n "$purity_scarhrd_jid" ]]; then
+    eval_dep="afterok:${scarhrd_jid}:${purity_scarhrd_jid}"
+else
+    eval_dep="afterok:${scarhrd_jid}"
+fi
 
 eval_jid=$(sbatch --parsable \
-    --dependency=afterok:"$scarhrd_jid" \
+    --dependency="$eval_dep" \
     --export=ALL,REPO_DIR="$REPO_DIR",CURRENT_RUN="$RUN_DATE" \
     "$EVAL_HRD_SBATCH")
 
-echo "HRD eval   → $eval_jid  (dep: $scarhrd_jid)"
+echo "HRD eval              → $eval_jid  (dep: ${eval_dep#afterok:})"
 echo ""
 echo "Monitor:  squeue -u \$USER"
 echo "Logs:     ${SCRIPT_DIR}/logs/"

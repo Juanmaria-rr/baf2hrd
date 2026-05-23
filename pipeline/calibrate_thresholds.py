@@ -21,6 +21,7 @@ Outputs (all under PARAMS['outdir']):
     separability_summary_all_cn.png — Cohen's d / AUC overview across all CN values
 """
 
+import argparse
 import os
 import json
 
@@ -71,6 +72,16 @@ PARAMS = {
     # Set to None to use all ASCAT-profiled samples (original behaviour).
     'calibration_samples_file': None,
 }
+
+# CLI overrides — allow non-interactive runs without editing PARAMS
+_p = argparse.ArgumentParser(add_help=False)
+_p.add_argument('--input',   default=None, help='Path to merged segments CSV')
+_p.add_argument('--feature', default=None, help='Column to use as decision variable')
+_p.add_argument('--outdir',  default=None, help='Output directory (overrides PARAMS)')
+_cli, _ = _p.parse_known_args()
+if _cli.input:   PARAMS['input_file'] = _cli.input
+if _cli.feature: PARAMS['feature']    = _cli.feature
+if _cli.outdir:  PARAMS['outdir']     = _cli.outdir
 
 # ============================================================
 # LOAD DATA

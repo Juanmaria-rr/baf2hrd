@@ -1055,10 +1055,16 @@ def build_scarHRD_input_using_thresholds(segments_df, sample, thresholds):
     df["total_cn_used_for_decision"] = df["totalCN"]
     df["total_cn_rounding_rule"]     = "classical_rounding_floor(x+0.5)"
 
-    # Use the uncorrected (raw) outer_mass so that calibration data (ASCAT-downsampled,
-    # where purity was applied) and application data (TSO500, no purity) are on the
-    # same BAF scale.  Fall back to corrected outer_mass only if raw is unavailable.
-    if "outer_mass_raw" in df.columns:
+    # When purity correction is active (PURITY_FILE set), use the purity-corrected
+    # outer_mass so that classification and calibration are on the same BAF scale
+    # (thresholds were derived from outer_mass_purity_corrected, which equals the
+    # pipeline's outer_mass column when apply_purity_correction was applied).
+    # Without purity file, use outer_mass_raw to match the raw-calibrated thresholds.
+    _purity_active = PURITY_FILE is not None
+    if _purity_active and "outer_mass" in df.columns:
+        score_col = "outer_mass"
+        print("ℹ️  Purity correction active — using corrected 'outer_mass' for classification")
+    elif "outer_mass_raw" in df.columns:
         score_col = "outer_mass_raw"
     elif "outer_mass_raw_x" in df.columns:
         score_col = "outer_mass_raw_x"

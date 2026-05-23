@@ -34,7 +34,7 @@ input:
 
   # Purity/ploidy TSV file (tab-separated, columns: sample, purity, ploidy).
   # Set to null if not available — pipeline runs without purity correction.
-  purity_file: "/storage/scratch01/groups/co/cn_extra/alleleSpecific/tso_samples/purity_ploidy_pipeline.tsv"
+  purity_file: null   # e.g. "/path/to/purity_ploidy.tsv"  (columns: sample, purity, ploidy)
 
   # Directory containing ASCAT segment CSVs with nMajor/nMinor columns.
   # Set to null to search only raw_segments_dir.

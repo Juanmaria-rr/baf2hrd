@@ -1,0 +1,11 @@
+# Sample blacklist — base IDs to exclude from filtered HRD report.
+# One ID per line. Lines starting with # are ignored.
+# Source: collaborator list received 2026-05-21.
+JBLAB17037
+JBLAB296
+JBLAB301
+JBLAB321
+JBLAB336
+JBLAB361
+JBLAB373
+JBLAB438

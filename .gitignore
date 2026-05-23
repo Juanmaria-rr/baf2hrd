@@ -10,6 +10,7 @@ __pycache__/
 *.txt
 !autoresearch/calibration_samples.txt
 !autoresearch/validation_samples.txt
+!configs/blacklist.txt
 *.jsonl
 *.png
 *.pdf

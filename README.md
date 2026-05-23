@@ -18,6 +18,7 @@ BAM files
    │             ↑ optimised by autoresearch/
    └── Stage 4: scarHRD → HRD scores
    └── QC report → {base_dir}/qc_report.html
+   └── HRD performance report → {tso_samples_root}/hrd_performance_report.html
 ```
 
 ## Structure
@@ -27,10 +28,12 @@ pipeline/     Python source (main pipeline + utilities)
   split_segments.py        ← pre-processing: combined segtable → per-sample CSVs
   qc_report.py             ← post-pipeline QC report (HTML autocontenido)
   log_processed_samples.py ← genera PROCESSED_SAMPLES.tsv con trazabilidad de runs
+  eval_hrd_performance.py  ← evaluación de performance vs GIS gold standard (HTML)
 slurm/        SLURM submission scripts
   orchestrate_pipeline.sh  ← entry point; encadena Stage 0 → 4 → QC report
   run_index_bam.sbatch     ← indexado de BAM (lanzado automáticamente si .bai ausente/vacío)
   run_qc_report.sbatch     ← lanzamiento ad hoc del QC report
+  run_eval_hrd.sbatch      ← lanzamiento ad hoc del informe de evaluación vs GIS
 configs/      Per-run YAML configuration (auto-generated per run)
   run_info_YYYYMMDD.json   ← trazabilidad: git_commit + config_file por run (auto-generated)
 autoresearch/ Autonomous loop for improving Stage 3 classification
@@ -47,15 +50,34 @@ bash slurm/orchestrate_pipeline.sh \
   --tsv-dir /path/to/YYYYMMDD_batchNN_mpileup/results
 ```
 
+When purity data is available, pass `--purity-file` to launch the base and
+purity-corrected runs **in parallel** from the same Stage 0 dependency:
+
+```bash
+bash slurm/orchestrate_pipeline.sh \
+  --bam-dir  /path/to/all_bam_tso \
+  --tsv-dir  /path/to/YYYYMMDD_mpileup_results \
+  --segments-dir /path/to/YYYYMMDD_segments \
+  --purity-file /path/to/purity_ploidy_pipeline.tsv
+```
+
+This submits two independent pipeline chains simultaneously:
+- `YYYYMMDD/` — base run (raw BAF, raw thresholds)
+- `YYYYMMDD_purity/` — purity-corrected BAF + purity-calibrated thresholds
+
 The orchestrator will:
 1. Run `split_segments.py` to generate per-sample segment CSVs from the combined segtable
-2. Auto-generate `configs/pipeline_config_YYYYMMDD.yaml` with the correct paths
+2. Auto-generate `configs/pipeline_config_YYYYMMDD.yaml` (and `_purity.yaml` if `--purity-file` set)
 3. Write `configs/run_info_YYYYMMDD.json` (git commit hash + config path) for traceability
-4. **Pre-flight**: validate `.bai` index for every BAM — if absent or empty (corrupt transfer stub), submit a `run_index_bam.sbatch` job and chain the mpileup after it
-5. Submit Stage 0 (mpileup → `_qc.tsv`) per sample via SLURM; samples that already have a `_qc.tsv` are skipped automatically
-6. Submit Stages 1–3 as a dependent job once all Stage 0 jobs complete
-7. Submit Stage 4 (scarHRD) dependent on Stages 1–3
-8. Submit the QC report dependent on Stage 4 → `{base_dir}/qc_report.html`
+4. **Pre-flight**: validate `.bai` index for every BAM — if absent or empty, submit `run_index_bam.sbatch` and chain mpileup after it
+5. Submit Stage 0 (mpileup → `_qc.tsv`) per sample; samples that already have a `_qc.tsv` are skipped
+6. Submit Stages 1–3 (base, and purity in parallel if `--purity-file` set) dependent on Stage 0
+7. Submit Stage 4 (scarHRD) for each pipeline chain
+8. Submit QC report → `{base_dir}/qc_report.html`
+9. Submit HRD eval report once all scarHRD jobs complete → `tso_samples/hrd_performance_report.html`
+
+The `pipeline_manifest.csv` in each run directory includes a `purity_note` column:
+`ok` / `no_purity_data` / `no_purity_file` — records why correction was or wasn't applied per sample.
 
 If `--bam-dir` / `--tsv-dir` are omitted, defaults to the original `rg_bam` and
 `20260225_GoldStandard_mpileup_stats_q30/results` directories.
@@ -111,6 +133,37 @@ El HTML resultante se escribe en `{base_dir}/qc_report.html` e incluye:
 | Heatmap de margen | Qué segmentos caen cerca del límite de clasificación (inciertos) |
 | Composición alélica | Fracción LoH / Balanced / AI / Deletion por muestra (DP=8) |
 | Pre/post-merge | Compresión de segmentos tras el merge por adyacencia |
+
+### HRD performance report
+
+Generates a self-contained HTML report comparing pipeline HRD scores against
+Myriad GIS gold standard across all production runs (≥ 20260511). Includes
+scatter plots (LoH / TAI / LST / HRD_Total vs GIS), confusion matrices
+(threshold 42), and a SampleID parsing audit.
+
+```bash
+sbatch --export=ALL,REPO_DIR="$(pwd)",CURRENT_RUN=20260520 \
+  slurm/run_eval_hrd.sbatch
+```
+
+Output: `{tso_samples_root}/hrd_performance_report.html`
+
+Key options (passed via `--export` or editable in the sbatch):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CURRENT_RUN` | _(none)_ | Highlights a specific run with ★ in per-run plots |
+| `MIN_RUN` | `20260511` | Excludes runs before this date (pre-pipeline runs) |
+
+To exclude specific samples (e.g. blacklisted), pass `--exclude-samples` directly:
+
+```bash
+conda run -n shapeit4 python pipeline/eval_hrd_performance.py \
+  --tso-samples-root /path/to/tso_samples \
+  --gis-scores /path/to/gis_scores.csv \
+  --exclude-samples JBLAB17037 JBLAB296 JBLAB301 JBLAB321 JBLAB336 \
+  --output /path/to/hrd_performance_report_filtered.html
+```
 
 ### Purity correction
 
@@ -198,6 +251,7 @@ chromosome,start,end,segVal,sample
 | 3 — Allele-specific CN | functional · being optimised |
 | 4 — scarHRD scoring | functional |
 | QC report | functional · auto-lanzado por orchestrator |
+| HRD performance report | functional · ad hoc via run_eval_hrd.sbatch |
 | autoresearch loop | active |
 
 Current `val_allelic_acc` baseline: **0.922** (ASCAT ground truth, DP≥8).

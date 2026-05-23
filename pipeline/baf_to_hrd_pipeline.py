@@ -1534,6 +1534,7 @@ def run_script1():
                     sample_baf_hit_list  = []
                     sample_segments_list = []
                     sample_purity_used   = np.nan
+                    sample_purity_note   = "no_purity_file" if not purity_mapping else "no_purity_data"
 
                     for dp in DP_VALUES:
                         print(f"\n  Processing DP≥{dp}...")
@@ -1593,6 +1594,7 @@ def run_script1():
                             else:
                                 print(f"    ✓ Found purity: {sample_purity:.4f}")
                                 sample_purity_used = sample_purity
+                                sample_purity_note = "ok"
                                 baf_df = apply_purity_correction(baf_df, sample_purity, baf_col="BAF_n")
                                 comparison_dir = os.path.join(BAF_CORRECTION_PLOTS_DIR, stem)
                                 plot_baf_correction_comparison(baf_df, sample_id, dp, sample_purity, comparison_dir)
@@ -1725,6 +1727,7 @@ def run_script1():
                             "segments_file":       segments_output_file,
                             "baf_hits_file":       baf_hits_output_file if len(all_baf_hits_df) > 0 else "",
                             "purity_used":         sample_purity_used,
+                            "purity_note":         sample_purity_note,
                             "dp_filters":          ",".join(map(str, sorted(
                                 sample_segments_df["dp_filter"].dropna().unique().tolist()
                             ))),

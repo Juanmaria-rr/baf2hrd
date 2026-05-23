@@ -146,7 +146,9 @@ sbatch --export=ALL,REPO_DIR="$(pwd)",CURRENT_RUN=20260520 \
   slurm/run_eval_hrd.sbatch
 ```
 
-Output: `{tso_samples_root}/hrd_performance_report.html`
+Outputs:
+- `{tso_samples_root}/hrd_performance_report.html` — all samples
+- `{tso_samples_root}/hrd_performance_report_filtered.html` — blacklisted samples excluded (generated automatically if `configs/blacklist.txt` is non-empty)
 
 Key options (passed via `--export` or editable in the sbatch):
 
@@ -154,16 +156,11 @@ Key options (passed via `--export` or editable in the sbatch):
 |----------|---------|-------------|
 | `CURRENT_RUN` | _(none)_ | Highlights a specific run with ★ in per-run plots |
 | `MIN_RUN` | `20260511` | Excludes runs before this date (pre-pipeline runs) |
+| `BLACKLIST_FILE` | `configs/blacklist.txt` | Path to sample blacklist for filtered report |
 
-To exclude specific samples (e.g. blacklisted), pass `--exclude-samples` directly:
-
-```bash
-conda run -n shapeit4 python pipeline/eval_hrd_performance.py \
-  --tso-samples-root /path/to/tso_samples \
-  --gis-scores /path/to/gis_scores.csv \
-  --exclude-samples JBLAB17037 JBLAB296 JBLAB301 JBLAB321 JBLAB336 \
-  --output /path/to/hrd_performance_report_filtered.html
-```
+**Sample blacklist** — edit `configs/blacklist.txt` to add or remove samples
+from the filtered report. One base ID per line; lines starting with `#` are
+ignored. The filtered report is regenerated automatically on every eval run.
 
 ### Purity correction
 
